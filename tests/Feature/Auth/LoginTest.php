@@ -139,3 +139,44 @@ test('login normalizes email with whitespace and mixed casing', function () {
     $response->assertStatus(200)
         ->assertJsonPath('user.email', 'mixedcase@example.com');
 });
+
+test('logout on one device does not invalidate other active devices', function () {
+    $user = User::factory()->create([
+        'email' => 'logout-multi@example.com',
+        'password' => 'Secret123!',
+    ]);
+
+    // Device A logs in
+    $responseA = $this->postJson('/api/v1/auth/login', [
+        'email' => 'logout-multi@example.com',
+        'password' => 'Secret123!',
+        'device_name' => 'Device A',
+    ]);
+    $tokenA = $responseA->json('token');
+
+    // Device B logs in
+    $responseB = $this->postJson('/api/v1/auth/login', [
+        'email' => 'logout-multi@example.com',
+        'password' => 'Secret123!',
+        'device_name' => 'Device B',
+    ]);
+    $tokenB = $responseB->json('token');
+
+    // Device A logs out
+    $this->withToken($tokenA)
+        ->postJson('/api/v1/auth/logout')
+        ->assertStatus(200);
+
+    $this->app['auth']->forgetGuards();
+
+    // Device A token is now invalid
+    $this->withToken($tokenA)
+        ->getJson('/api/v1/auth/me')
+        ->assertStatus(401);
+
+    // Device B token is still valid
+    $this->app['auth']->forgetGuards();
+    $this->withToken($tokenB)
+        ->getJson('/api/v1/auth/me')
+        ->assertStatus(200);
+});
