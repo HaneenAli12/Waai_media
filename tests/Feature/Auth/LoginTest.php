@@ -180,3 +180,46 @@ test('logout on one device does not invalidate other active devices', function (
         ->getJson('/api/v1/auth/me')
         ->assertStatus(200);
 });
+
+test('/me returns session associated with current token', function () {
+    $user = User::factory()->create([
+        'email' => 'me-multi@example.com',
+        'password' => 'Secret123!',
+    ]);
+
+    // Device A logs in
+    $responseA = $this->postJson('/api/v1/auth/login', [
+        'email' => 'me-multi@example.com',
+        'password' => 'Secret123!',
+        'device_name' => 'Device A',
+    ]);
+    $tokenA = $responseA->json('token');
+    $sessionAId = $responseA->json('session_id');
+
+    // Device B logs in
+    $responseB = $this->postJson('/api/v1/auth/login', [
+        'email' => 'me-multi@example.com',
+        'password' => 'Secret123!',
+        'device_name' => 'Device B',
+    ]);
+    $tokenB = $responseB->json('token');
+    $sessionBId = $responseB->json('session_id');
+
+    // Call /me with Device A's token
+    $this->app['auth']->forgetGuards();
+    $meResponseA = $this->withToken($tokenA)
+        ->getJson('/api/v1/auth/me');
+        
+    $meResponseA->assertStatus(200)
+        ->assertJsonPath('session.id', $sessionAId)
+        ->assertJsonPath('session.device_name', 'Device A');
+
+    // Call /me with Device B's token
+    $this->app['auth']->forgetGuards();
+    $meResponseB = $this->withToken($tokenB)
+        ->getJson('/api/v1/auth/me');
+        
+    $meResponseB->assertStatus(200)
+        ->assertJsonPath('session.id', $sessionBId)
+        ->assertJsonPath('session.device_name', 'Device B');
+});

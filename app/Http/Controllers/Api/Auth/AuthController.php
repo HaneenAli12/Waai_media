@@ -78,7 +78,11 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         $user = $request->user();
-        $activeSession = $user->activeSession;
+        
+        $tokenId = $user->currentAccessToken()?->id;
+        $activeSession = $tokenId 
+            ? $user->userSessions()->where('token_id', $tokenId)->whereNull('revoked_at')->first() 
+            : null;
 
         return response()->json([
             'user' => [
