@@ -136,7 +136,7 @@ class SessionManager
         $otherSessions = UserSession::where('user_id', $user->id)
             ->where(function ($query) use ($currentTokenId) {
                 $query->where('token_id', '!=', $currentTokenId)
-                      ->orWhereNull('token_id');
+                    ->orWhereNull('token_id');
             })
             ->whereNull('revoked_at')
             ->get();

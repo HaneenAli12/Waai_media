@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Waai Media - Authentication API",
-    "description": "Authentication API collection for Waai Media Laravel backend. Set the collection variable base_url to the reachable Laravel API host (without /api/v1). Vercel hosting the Angular frontend does not by itself make the Laravel backend publicly reachable. Use a test account and do not commit real passwords or tokens.",
+    "description": "Comprehensive Postman Collection for Waai Media Laravel Authentication API. Includes complete happy path workflows, verified error responses, standardized top-level error messages, and dedicated negative test cases matching the Laravel backend implementation.\n\n### Standard Error Response Format:\n- Every error response consistently contains a top-level `message` field with a non-empty string for Angular HTTP Interceptor and Toaster compatibility.\n- Validation failures (422) additionally include the `errors` object containing field-specific error message arrays.\n\n### Configuration:\n- Set collection variable `base_url` to your API host (e.g. `http://127.0.0.1:8000`).\n- Set collection variables `email` and `password` to an existing test account.\n- Never commit real production credentials or tokens.\n\n### Response Verification Levels:\n- **[Automated Test]**: Verified by automated backend feature tests in the repository test suite.\n- **[Live Execution]**: Verified by executing HTTP requests against the application kernel.\n- **[Code Inspection]**: Verified against the controller source code and Laravel framework validation rules.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -52,38 +52,147 @@
       "request": {
         "method": "POST",
         "header": [
-          {
-            "key": "Accept",
-            "value": "application/json"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
+          {"key":"Accept","value":"application/json"},
+          {"key":"Content-Type","value":"application/json"}
         ],
         "body": {
           "mode": "raw",
           "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"device_name\": \"{{device_name}}\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
+          "options": {"raw":{"language":"json"}}
         },
-        "url": "{{base_url}}/api/v1/auth/login"
+        "url": "{{base_url}}/api/v1/auth/login",
+        "description": "### Endpoint: `POST /api/v1/auth/login`\n\nAuthenticates a user with email and password, creates an active `user_sessions` record, and returns a plain-text Laravel Sanctum Bearer token.\n\n#### Rate Limiting:\n- Rate limit: 5 attempts per minute per normalized email / IP (`throttle:login`).\n\n#### Successful Response (200 OK) [Automated Test]:\n```json\n{\n  \"message\": \"Login successful.\",\n  \"token\": \"1|abcdef123456...\",\n  \"token_type\": \"Bearer\",\n  \"user\": {\n    \"id\": 1,\n    \"name\": \"Jane Doe\",\n    \"email\": \"jane@example.com\",\n    \"role\": \"editor\"\n  },\n  \"session_id\": 45\n}\n```\n\n#### Error Responses:\n1. **422 Unprocessable Entity** - Incorrect credentials [Automated Test]:\n   - JSON: `{\"message\": \"Invalid email or password.\"}`\n   - Note: The `errors` dictionary is absent. Frontend should check `error.error.message`.\n2. **422 Unprocessable Entity** - Deactivated account (soft-deleted user) [Automated Test]:\n   - JSON: `{\"message\": \"Account is deactivated.\"}`\n   - Note: Display an account status alert.\n3. **422 Unprocessable Entity** - Validation errors (missing fields, invalid format) [Code Inspection]:\n   - JSON: `{\"message\": \"The email field is required.\", \"errors\": {\"email\": [\"The email field is required.\"], \"password\": [\"The password field is required.\"]}}`\n   - Note: Frontend maps `error.error.errors` to form inputs.\n4. **429 Too Many Requests** - Rate limit exceeded [Automated Test]:\n   - JSON: `{\"message\": \"Too many requests. Please try again later.\"}`\n   - Header: `Retry-After: <seconds>`"
       },
+      "response": [
+        {
+          "name": "200 OK - Login Successful [Automated Test]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane@example.com\",\n  \"password\": \"Secret123!\",\n  \"device_name\": \"Postman Desktop\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/login"
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"Login successful.\",\n  \"token\": \"1|p4ssw0rdt0k3n...\",\n  \"token_type\": \"Bearer\",\n  \"user\": {\n    \"id\": 1,\n    \"name\": \"Jane Doe\",\n    \"email\": \"jane@example.com\",\n    \"role\": \"editor\"\n  },\n  \"session_id\": 45\n}"
+        },
+        {
+          "name": "422 - Invalid Credentials [Automated Test]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane@example.com\",\n  \"password\": \"WrongPassword!\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/login"
+          },
+          "status": "Unprocessable Entity",
+          "code": 422,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"Invalid email or password.\"\n}"
+        },
+        {
+          "name": "422 - Account Deactivated [Automated Test]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"deactivated@example.com\",\n  \"password\": \"Secret123!\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/login"
+          },
+          "status": "Unprocessable Entity",
+          "code": 422,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"Account is deactivated.\"\n}"
+        },
+        {
+          "name": "422 - Missing Required Fields [Code Inspection]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{base_url}}/api/v1/auth/login"
+          },
+          "status": "Unprocessable Entity",
+          "code": 422,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"The email field is required.\",\n  \"errors\": {\n    \"email\": [\n      \"The email field is required.\"\n    ],\n    \"password\": [\n      \"The password field is required.\"\n    ]\n  }\n}"
+        },
+        {
+          "name": "429 - Rate Limit (5 per minute) [Automated Test]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane@example.com\",\n  \"password\": \"Secret123!\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/login"
+          },
+          "status": "Too Many Requests",
+          "code": 429,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"},
+            {"key":"Retry-After","value":"60"}
+          ],
+          "body": "{\n  \"message\": \"Too many requests. Please try again later.\"\n}"
+        }
+      ],
       "event": [
         {
           "listen": "test",
           "script": {
             "type": "text/javascript",
             "exec": [
-              "if (pm.response.code === 200) {",
+              "pm.test('Login returns 200 OK', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Captures Bearer token and session_id', function () {",
               "  const data = pm.response.json();",
-              "  if (data.token) pm.collectionVariables.set('token', data.token);",
-              "  if (data.session_id) pm.collectionVariables.set('session_id', String(data.session_id));",
-              "}",
-              "pm.test('Login returns 200', function () { pm.response.to.have.status(200); });"
+              "  pm.expect(data).to.have.property('token');",
+              "  pm.expect(data.token_type).to.eql('Bearer');",
+              "  pm.expect(data).to.have.property('session_id');",
+              "  pm.collectionVariables.set('token', data.token);",
+              "  pm.collectionVariables.set('session_id', String(data.session_id));",
+              "});"
             ]
           }
         }
@@ -94,65 +203,269 @@
       "request": {
         "method": "POST",
         "header": [
-          {
-            "key": "Accept",
-            "value": "application/json"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
+          {"key":"Accept","value":"application/json"},
+          {"key":"Content-Type","value":"application/json"}
         ],
         "body": {
           "mode": "raw",
           "raw": "{\n  \"email\": \"{{email}}\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
+          "options": {"raw":{"language":"json"}}
         },
         "url": "{{base_url}}/api/v1/auth/forgot-password",
-        "description": "Returns a generic message. For an existing test account, check the configured mail inbox/logs for the real OTP. Respect the backend resend cooldown."
-      }
-    },
-    {
-      "name": "3 - Verify OTP",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Accept",
-            "value": "application/json"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp\": \"{{otp}}\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        },
-        "url": "{{base_url}}/api/v1/auth/verify-otp",
-        "description": "Enter the actual 4-digit OTP in the collection variable otp before sending."
+        "description": "### Endpoint: `POST /api/v1/auth/forgot-password`\n\nRequests a 4-digit OTP for password recovery via email. \n\n#### Account Enumeration Protection:\nTo prevent user enumeration, this endpoint returns the identical 200 OK generic message whether the email exists, does not exist, or is deactivated.\n\n#### Rate Limiting & Cooldown:\n- 1 request per 30 seconds cooldown per email.\n- Maximum 6 successful OTP requests per 60 minutes per email.\n- Maximum 20 requests per hour per IP.\n- Route throttle: 5 requests per minute per IP (`throttle:otp`).\n\n#### Successful Response (200 OK) [Automated Test]:\n```json\n{\n  \"message\": \"If an account exists with that email, a password reset code has been sent.\"\n}\n```\n\n#### Error Responses:\n1. **422 Unprocessable Entity** - Validation error (invalid or missing email) [Code Inspection]:\n   - JSON: `{\"message\": \"The email field is required.\", \"errors\": {\"email\": [\"The email field is required.\"]}}`\n   - JSON: `{\"message\": \"The email field must be a valid email address.\", \"errors\": {\"email\": [\"The email field must be a valid email address.\"]}}`\n2. **429 Too Many Requests** - 30-Second cooldown active [Automated Test & Code Inspection]:\n   - JSON: `{\"message\": \"Please wait {seconds} seconds before requesting a new code.\"}`\n   - Note: The message contains dynamic remaining seconds (1 to 30).\n3. **429 Too Many Requests** - Hourly send limit exceeded (> 6 sends in 60 min) [Automated Test]:\n   - JSON: `{\"message\": \"Too many requests for this email. Please try again later.\"}`\n4. **429 Too Many Requests** - IP limit exceeded (> 20/hr) [Code Inspection]:\n   - JSON: `{\"message\": \"Too many requests. Please try again later.\"}`\n5. **429 Too Many Requests** - Concurrent lock race [Code Inspection]:\n   - JSON: `{\"message\": \"Please wait a moment before requesting again.\"}`\n6. **429 Too Many Requests** - Route throttle (5/min) [Code Inspection]:\n   - JSON: `{\"message\": \"Too many requests. Please try again later.\"}`"
       },
+      "response": [
+        {
+          "name": "200 OK - Generic Message (Enumeration Protected) [Automated Test]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane@example.com\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/forgot-password"
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"If an account exists with that email, a password reset code has been sent.\"\n}"
+        },
+        {
+          "name": "422 - Invalid Email Format [Code Inspection]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"invalid-email\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/forgot-password"
+          },
+          "status": "Unprocessable Entity",
+          "code": 422,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"The email field must be a valid email address.\",\n  \"errors\": {\n    \"email\": [\n      \"The email field must be a valid email address.\"\n    ]\n  }\n}"
+        },
+        {
+          "name": "429 - Cooldown Active (Dynamic seconds) [Automated Test & Code Inspection]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane@example.com\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/forgot-password"
+          },
+          "status": "Too Many Requests",
+          "code": 429,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"Please wait 28 seconds before requesting a new code.\"\n}"
+        },
+        {
+          "name": "429 - Max 6 Sends in 60 Minutes [Automated Test]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane@example.com\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/forgot-password"
+          },
+          "status": "Too Many Requests",
+          "code": 429,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"Too many requests for this email. Please try again later.\"\n}"
+        }
+      ],
       "event": [
         {
           "listen": "test",
           "script": {
             "type": "text/javascript",
             "exec": [
-              "if (pm.response.code === 200) {",
+              "pm.test('Forgot password returns 200 OK', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Returns exact enumeration-protected message', function () {",
               "  const data = pm.response.json();",
-              "  if (data.reset_token) pm.collectionVariables.set('reset_token', data.reset_token);",
-              "}",
-              "pm.test('OTP verification returns 200 when valid', function () { pm.expect(pm.response.code).to.be.oneOf([200, 400, 422, 429]); });"
+              "  pm.expect(data.message).to.eql('If an account exists with that email, a password reset code has been sent.');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 - Verify OTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          {"key":"Accept","value":"application/json"},
+          {"key":"Content-Type","value":"application/json"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp\": \"{{otp}}\"\n}",
+          "options": {"raw":{"language":"json"}}
+        },
+        "url": "{{base_url}}/api/v1/auth/verify-otp",
+        "description": "### Endpoint: `POST /api/v1/auth/verify-otp`\n\nVerifies the 4-digit numeric OTP and issues a 64-character single-use password reset token.\n\n#### Security Rules:\n- OTP expires strictly after **90 seconds**.\n- Maximum **3 incorrect attempts** per OTP.\n- Re-requesting an OTP immediately deletes and invalidates the previous OTP.\n- The issued `reset_token` is valid for **5 minutes (300 seconds)** and is strictly single-use.\n\n#### Successful Response (200 OK) [Automated Test]:\n```json\n{\n  \"message\": \"OTP verified successfully.\",\n  \"reset_token\": \"a1b2c3d4e5f6g7h8...\",\n  \"expires_in\": 300\n}\n```\n\n#### Error Responses:\n1. **400 Bad Request** - No active OTP request found [Code Inspection]:\n   - JSON: `{\"message\": \"No active OTP request found for this email address.\"}`\n   - Note: Returned if no OTP was issued, or if it was already verified/invalidated. Status is 400, not 422.\n2. **422 Unprocessable Entity** - Incorrect verification code (attempts remaining) [Automated Test & Code Inspection]:\n   - JSON: `{\"message\": \"Invalid verification code. Attempts remaining: 2.\"}`\n   - Note: Displays remaining chances before invalidation.\n3. **422 Unprocessable Entity** - Expired OTP (> 90 seconds) [Automated Test]:\n   - JSON: `{\"message\": \"The verification code has expired. Please request a new code.\"}`\n4. **422 Unprocessable Entity** - Validation error (missing fields or not 4 digits) [Code Inspection]:\n   - JSON: `{\"message\": \"The otp field must be 4 digits.\", \"errors\": {\"otp\": [\"The otp field must be 4 digits.\"]}}`\n5. **429 Too Many Requests** - Max verification attempts exceeded (3 failed attempts) [Automated Test]:\n   - JSON: `{\"message\": \"Maximum verification attempts exceeded. Please request a new code.\"}`\n   - Note: OTP is locked. User must request a new code.\n6. **429 Too Many Requests** - IP limit (> 30/hr) or route throttle (5/min) [Code Inspection]:\n   - JSON: `{\"message\": \"Too many requests. Please try again later.\"}`"
+      },
+      "response": [
+        {
+          "name": "200 OK - OTP Verified Successfully [Automated Test]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane@example.com\",\n  \"otp\": \"1234\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/verify-otp"
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"OTP verified successfully.\",\n  \"reset_token\": \"a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2\",\n  \"expires_in\": 300\n}"
+        },
+        {
+          "name": "400 - No Active OTP Request Found [Code Inspection]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"unknown@example.com\",\n  \"otp\": \"1234\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/verify-otp"
+          },
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"No active OTP request found for this email address.\"\n}"
+        },
+        {
+          "name": "422 - Invalid OTP (Attempts Remaining) [Automated Test & Code Inspection]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane@example.com\",\n  \"otp\": \"9999\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/verify-otp"
+          },
+          "status": "Unprocessable Entity",
+          "code": 422,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"Invalid verification code. Attempts remaining: 2.\"\n}"
+        },
+        {
+          "name": "422 - Code Expired (Past 90 Seconds) [Automated Test]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane@example.com\",\n  \"otp\": \"1234\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/verify-otp"
+          },
+          "status": "Unprocessable Entity",
+          "code": 422,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"The verification code has expired. Please request a new code.\"\n}"
+        },
+        {
+          "name": "429 - Max 3 Attempts Exceeded [Automated Test]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane@example.com\",\n  \"otp\": \"1234\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/verify-otp"
+          },
+          "status": "Too Many Requests",
+          "code": 429,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"Maximum verification attempts exceeded. Please request a new code.\"\n}"
+        }
+      ],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Verify OTP returns 200 OK', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Returns 64-char reset_token and expires_in', function () {",
+              "  const data = pm.response.json();",
+              "  pm.expect(data).to.have.property('reset_token');",
+              "  pm.expect(data.reset_token.length).to.eql(64);",
+              "  pm.expect(data.expires_in).to.eql(300);",
+              "  pm.collectionVariables.set('reset_token', data.reset_token);",
+              "});"
             ]
           }
         }
@@ -163,94 +476,970 @@
       "request": {
         "method": "POST",
         "header": [
-          {
-            "key": "Accept",
-            "value": "application/json"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
+          {"key":"Accept","value":"application/json"},
+          {"key":"Content-Type","value":"application/json"}
         ],
         "body": {
           "mode": "raw",
           "raw": "{\n  \"email\": \"{{email}}\",\n  \"reset_token\": \"{{reset_token}}\",\n  \"password\": \"{{new_password}}\",\n  \"password_confirmation\": \"{{new_password}}\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
+          "options": {"raw":{"language":"json"}}
         },
         "url": "{{base_url}}/api/v1/auth/reset-password",
-        "description": "Uses the single-use reset_token captured from Verify OTP. Successful reset revokes all active sessions/tokens."
-      }
+        "description": "### Endpoint: `POST /api/v1/auth/reset-password`\n\nResets the user's password using the verified single-use `reset_token`. \n\n#### Session Revocation Behavior:\nA successful password reset **revokes ALL active sessions and Sanctum tokens** across all devices for that user. The user must log in again with the new password.\n\n#### Successful Response (200 OK) [Automated Test]:\n```json\n{\n  \"message\": \"Password has been reset successfully. Please log in with your new password.\"\n}\n```\n\n#### Error Responses:\n1. **422 Unprocessable Entity** - Invalid, expired, or already-used reset token [Automated Test]:\n   - JSON: `{\"message\": \"Invalid or expired password reset token.\"}`\n2. **422 Unprocessable Entity** - Password confirmation mismatch [Code Inspection]:\n   - JSON: `{\"message\": \"The password field confirmation does not match.\", \"errors\": {\"password\": [\"The password field confirmation does not match.\"]}}`\n3. **422 Unprocessable Entity** - Password under 8 characters [Code Inspection]:\n   - JSON: `{\"message\": \"The password field must be at least 8 characters.\", \"errors\": {\"password\": [\"The password field must be at least 8 characters.\"]}}`\n4. **422 Unprocessable Entity** - Reset token size not 64 chars [Code Inspection]:\n   - JSON: `{\"message\": \"The reset token field must be 64 characters.\", \"errors\": {\"reset_token\": [\"The reset token field must be 64 characters.\"]}}`\n5. **404 Not Found** - User not found or deactivated [Code Inspection]:\n   - JSON: `{\"message\": \"Unable to locate user for password reset.\"}`\n6. **429 Too Many Requests** - IP limit (> 20/hr) or route throttle [Code Inspection]:\n   - JSON: `{\"message\": \"Too many requests. Please try again later.\"}`"
+      },
+      "response": [
+        {
+          "name": "200 OK - Password Reset Successfully [Automated Test]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane@example.com\",\n  \"reset_token\": \"a1b2c3d4e5f6...\",\n  \"password\": \"NewSecret123!\",\n  \"password_confirmation\": \"NewSecret123!\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/reset-password"
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"Password has been reset successfully. Please log in with your new password.\"\n}"
+        },
+        {
+          "name": "422 - Invalid or Expired Reset Token [Automated Test]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane@example.com\",\n  \"reset_token\": \"0000000000000000000000000000000000000000000000000000000000000000\",\n  \"password\": \"NewSecret123!\",\n  \"password_confirmation\": \"NewSecret123!\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/reset-password"
+          },
+          "status": "Unprocessable Entity",
+          "code": 422,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"Invalid or expired password reset token.\"\n}"
+        },
+        {
+          "name": "422 - Password Confirmation Mismatch [Code Inspection]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane@example.com\",\n  \"reset_token\": \"a1b2c3...\",\n  \"password\": \"NewSecret123!\",\n  \"password_confirmation\": \"MismatchPass!\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/reset-password"
+          },
+          "status": "Unprocessable Entity",
+          "code": 422,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"The password field confirmation does not match.\",\n  \"errors\": {\n    \"password\": [\n      \"The password field confirmation does not match.\"\n    ]\n  }\n}"
+        },
+        {
+          "name": "404 - User Not Found [Code Inspection]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nonexistent@example.com\",\n  \"reset_token\": \"a1b2c3...\",\n  \"password\": \"NewSecret123!\",\n  \"password_confirmation\": \"NewSecret123!\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/reset-password"
+          },
+          "status": "Not Found",
+          "code": 404,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"Unable to locate user for password reset.\"\n}"
+        }
+      ],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Reset password returns 200 OK', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Returns reset success confirmation message', function () {",
+              "  const data = pm.response.json();",
+              "  pm.expect(data.message).to.eql('Password has been reset successfully. Please log in with your new password.');",
+              "});"
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "5 - Get Current User (/me)",
       "request": {
         "method": "GET",
         "header": [
-          {
-            "key": "Accept",
-            "value": "application/json"
-          },
-          {
-            "key": "Authorization",
-            "value": "Bearer {{token}}"
-          }
+          {"key":"Accept","value":"application/json"},
+          {"key":"Authorization","value":"Bearer {{token}}"}
         ],
         "url": "{{base_url}}/api/v1/auth/me",
-        "description": "Requires a token saved by Login. The returned session should belong to the current token/device."
-      }
+        "description": "### Endpoint: `GET /api/v1/auth/me`\n\nReturns the authenticated user's profile and the active session tied specifically to the request's Bearer token.\n\n#### Session Isolation:\nReturns the session record associated with the current token (`token_id`). It does not leak other devices' sessions.\n\n#### Successful Response (200 OK) [Automated Test]:\n```json\n{\n  \"user\": {\n    \"id\": 1,\n    \"name\": \"Jane Doe\",\n    \"email\": \"jane@example.com\",\n    \"role\": \"editor\",\n    \"created_at\": \"2026-10-01T12:00:00.000000Z\"\n  },\n  \"session\": {\n    \"id\": 45,\n    \"device_name\": \"Postman Desktop\",\n    \"ip_address\": \"127.0.0.1\",\n    \"created_at\": \"2026-10-10T14:22:11.000000Z\"\n  }\n}\n```\n*Note: `session` can be `null` if the token has no active unrevoked session record.*\n\n#### Error Responses:\n1. **401 Unauthorized** - Missing, malformed, invalid, or revoked token [Automated Test]:\n   - JSON: `{\"message\": \"Unauthenticated.\"}`\n2. **401 Unauthorized** - Token inactivity expiration (> 7 days inactive) [Automated Test]:\n   - JSON: `{\"message\": \"Session expired due to inactivity.\"}`\n   - Note: Frontend clears local state and routes to `/login`."
+      },
+      "response": [
+        {
+          "name": "200 OK - User Profile and Active Session [Automated Test]",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Authorization","value":"Bearer {{token}}"}
+            ],
+            "url": "{{base_url}}/api/v1/auth/me"
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"user\": {\n    \"id\": 1,\n    \"name\": \"Jane Doe\",\n    \"email\": \"jane@example.com\",\n    \"role\": \"editor\",\n    \"created_at\": \"2026-10-01T12:00:00.000000Z\"\n  },\n  \"session\": {\n    \"id\": 45,\n    \"device_name\": \"Postman Desktop\",\n    \"ip_address\": \"127.0.0.1\",\n    \"created_at\": \"2026-10-10T14:22:11.000000Z\"\n  }\n}"
+        },
+        {
+          "name": "401 - Unauthenticated (Missing / Invalid Token) [Automated Test]",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {"key":"Accept","value":"application/json"}
+            ],
+            "url": "{{base_url}}/api/v1/auth/me"
+          },
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"Unauthenticated.\"\n}"
+        },
+        {
+          "name": "401 - Session Expired Due to Inactivity (7 Days) [Automated Test]",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Authorization","value":"Bearer {{token}}"}
+            ],
+            "url": "{{base_url}}/api/v1/auth/me"
+          },
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"Session expired due to inactivity.\"\n}"
+        }
+      ],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Me endpoint returns 200 OK', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Returns user profile with valid structure', function () {",
+              "  const data = pm.response.json();",
+              "  pm.expect(data).to.have.property('user');",
+              "  pm.expect(data.user).to.have.property('id');",
+              "  pm.expect(data.user).to.have.property('email');",
+              "  pm.expect(data).to.have.property('session');",
+              "});"
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "6 - Logout",
       "request": {
         "method": "POST",
         "header": [
-          {
-            "key": "Accept",
-            "value": "application/json"
-          },
-          {
-            "key": "Authorization",
-            "value": "Bearer {{token}}"
-          }
+          {"key":"Accept","value":"application/json"},
+          {"key":"Authorization","value":"Bearer {{token}}"}
         ],
         "url": "{{base_url}}/api/v1/auth/logout",
-        "description": "Revokes only the token used for this request. After logout, /me with this token should return 401."
-      }
+        "description": "### Endpoint: `POST /api/v1/auth/logout`\n\nTerminates the active session and revokes the personal access token for the **current device only**.\n\n#### Device Isolation:\nOther active devices remain logged in and unaffected.\n\n#### Successful Response (200 OK) [Automated Test]:\n```json\n{\n  \"message\": \"Successfully logged out.\"\n}\n```\n\n#### Error Responses:\n1. **401 Unauthorized** - Missing, invalid, or already-revoked token [Automated Test]:\n   - JSON: `{\"message\": \"Unauthenticated.\"}`\n2. **401 Unauthorized** - Token expired due to inactivity [Code Inspection]:\n   - JSON: `{\"message\": \"Session expired due to inactivity.\"}`"
+      },
+      "response": [
+        {
+          "name": "200 OK - Logged Out [Automated Test]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Authorization","value":"Bearer {{token}}"}
+            ],
+            "url": "{{base_url}}/api/v1/auth/logout"
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"Successfully logged out.\"\n}"
+        },
+        {
+          "name": "401 - Unauthenticated [Automated Test]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"}
+            ],
+            "url": "{{base_url}}/api/v1/auth/logout"
+          },
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"Unauthenticated.\"\n}"
+        }
+      ],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Logout returns 200 OK', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Returns exact logout message', function () {",
+              "  const data = pm.response.json();",
+              "  pm.expect(data.message).to.eql('Successfully logged out.');",
+              "});"
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "7 - Change Password",
       "request": {
         "method": "POST",
         "header": [
-          {
-            "key": "Accept",
-            "value": "application/json"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          },
-          {
-            "key": "Authorization",
-            "value": "Bearer {{token}}"
-          }
+          {"key":"Accept","value":"application/json"},
+          {"key":"Content-Type","value":"application/json"},
+          {"key":"Authorization","value":"Bearer {{token}}"}
         ],
         "body": {
           "mode": "raw",
           "raw": "{\n  \"current_password\": \"{{password}}\",\n  \"password\": \"{{new_password}}\",\n  \"password_confirmation\": \"{{new_password}}\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
+          "options": {"raw":{"language":"json"}}
         },
         "url": "{{base_url}}/api/v1/auth/change-password",
-        "description": "Keeps the current token active and revokes other devices' sessions. After success, update the password variable if testing login again."
-      }
+        "description": "### Endpoint: `POST /api/v1/auth/change-password`\n\nChanges the password while actively authenticated.\n\n#### Session Revocation Behavior (Option B):\nKeeps the **current session and token active**, but **revokes sessions and tokens belonging to all other devices**.\n\n#### Rate Limiting:\n- Rate limit: 5 requests per minute per user ID / IP (`throttle:change_password`).\n\n#### Successful Response (200 OK) [Automated Test]:\n```json\n{\n  \"message\": \"Password successfully changed.\"\n}\n```\n\n#### Error Responses:\n1. **401 Unauthorized** - Missing or invalid Bearer token [Automated Test]:\n   - JSON: `{\"message\": \"Unauthenticated.\"}`\n2. **422 Unprocessable Entity** - Incorrect current password [Automated Test & Code Inspection]:\n   - JSON: `{\"message\": \"The password is incorrect.\", \"errors\": {\"current_password\": [\"The password is incorrect.\"]}}`\n3. **422 Unprocessable Entity** - New password same as current password [Automated Test & Code Inspection]:\n   - JSON: `{\"message\": \"The password field and current password must be different.\", \"errors\": {\"password\": [\"The password field and current password must be different.\"]}}`\n4. **422 Unprocessable Entity** - Password confirmation mismatch [Code Inspection]:\n   - JSON: `{\"message\": \"The password field confirmation does not match.\", \"errors\": {\"password\": [\"The password field confirmation does not match.\"]}}`\n5. **422 Unprocessable Entity** - Password under 8 characters [Code Inspection]:\n   - JSON: `{\"message\": \"The password field must be at least 8 characters.\", \"errors\": {\"password\": [\"The password field must be at least 8 characters.\"]}}`\n6. **429 Too Many Requests** - Throttle limit exceeded (5/min) [Automated Test]:\n   - JSON: `{\"message\": \"Too many requests. Please try again later.\"}`"
+      },
+      "response": [
+        {
+          "name": "200 OK - Password Successfully Changed [Automated Test]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"},
+              {"key":"Authorization","value":"Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"Secret123!\",\n  \"password\": \"NewSecret123!\",\n  \"password_confirmation\": \"NewSecret123!\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/change-password"
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"Password successfully changed.\"\n}"
+        },
+        {
+          "name": "422 - Incorrect Current Password [Automated Test & Code Inspection]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"},
+              {"key":"Authorization","value":"Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"WrongOldPassword!\",\n  \"password\": \"NewSecret123!\",\n  \"password_confirmation\": \"NewSecret123!\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/change-password"
+          },
+          "status": "Unprocessable Entity",
+          "code": 422,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"The password is incorrect.\",\n  \"errors\": {\n    \"current_password\": [\n      \"The password is incorrect.\"\n    ]\n  }\n}"
+        },
+        {
+          "name": "422 - Same Password as Current [Automated Test & Code Inspection]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"},
+              {"key":"Authorization","value":"Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"Secret123!\",\n  \"password\": \"Secret123!\",\n  \"password_confirmation\": \"Secret123!\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/change-password"
+          },
+          "status": "Unprocessable Entity",
+          "code": 422,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"The password field and current password must be different.\",\n  \"errors\": {\n    \"password\": [\n      \"The password field and current password must be different.\"\n    ]\n  }\n}"
+        },
+        {
+          "name": "401 - Unauthenticated [Automated Test]",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"Secret123!\",\n  \"password\": \"NewSecret123!\",\n  \"password_confirmation\": \"NewSecret123!\"\n}"
+            },
+            "url": "{{base_url}}/api/v1/auth/change-password"
+          },
+          "status": "Unauthorized",
+          "code": 401,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {"key":"Content-Type","value":"application/json"}
+          ],
+          "body": "{\n  \"message\": \"Unauthenticated.\"\n}"
+        }
+      ],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Change password returns 200 OK', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Returns exact success message', function () {",
+              "  const data = pm.response.json();",
+              "  pm.expect(data.message).to.eql('Password successfully changed.');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Negative Tests & Error Responses",
+      "description": "Dedicated requests for testing backend error handling and validation constraints. Each request asserts its intended HTTP status and exact backend message structure without modifying collection variables.",
+      "item": [
+        {
+          "name": "Login - Invalid Credentials (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"IntentionallyWrongPassword999!\"\n}",
+              "options": {"raw":{"language":"json"}}
+            },
+            "url": "{{base_url}}/api/v1/auth/login",
+            "description": "Tests invalid credentials against /login. Backend returns 422 with exact message 'Invalid email or password.' without an errors dictionary."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422 Unprocessable Entity', function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "pm.test('Returns exact message: Invalid email or password.', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.message).to.eql('Invalid email or password.');",
+                  "  pm.expect(data.errors).to.be.undefined;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - Missing Required Fields (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {"raw":{"language":"json"}}
+            },
+            "url": "{{base_url}}/api/v1/auth/login",
+            "description": "Tests empty request body against /login. Backend returns standard Laravel validation errors."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422 Unprocessable Entity', function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "pm.test('Errors object contains email and password rules', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data).to.have.property('errors');",
+                  "  pm.expect(data.errors).to.have.property('email');",
+                  "  pm.expect(data.errors).to.have.property('password');",
+                  "});",
+                  "pm.test('Top-level message is present and non-empty string', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Forgot Password - Missing Email Field (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {"raw":{"language":"json"}}
+            },
+            "url": "{{base_url}}/api/v1/auth/forgot-password",
+            "description": "Tests missing email field on /forgot-password."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422 Unprocessable Entity', function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "pm.test('Validation error indicates email is required', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.errors.email[0]).to.eql('The email field is required.');",
+                  "});",
+                  "pm.test('Top-level message is present and non-empty string', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Forgot Password - Invalid Email Format (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"not-a-valid-email-format\"\n}",
+              "options": {"raw":{"language":"json"}}
+            },
+            "url": "{{base_url}}/api/v1/auth/forgot-password",
+            "description": "Tests invalid email address validation rule."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422 Unprocessable Entity', function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "pm.test('Error indicates email must be valid email address', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.errors.email[0]).to.eql('The email field must be a valid email address.');",
+                  "});",
+                  "pm.test('Top-level message is present and non-empty string', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify OTP - No Active OTP Request (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nonexistent-otp-request@example.com\",\n  \"otp\": \"1234\"\n}",
+              "options": {"raw":{"language":"json"}}
+            },
+            "url": "{{base_url}}/api/v1/auth/verify-otp",
+            "description": "Tests verifying OTP when no pending request exists in database. Returns 400 Bad Request."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test('Message indicates no active OTP request found', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.message).to.eql('No active OTP request found for this email address.');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify OTP - Invalid OTP Format (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp\": \"12\"\n}",
+              "options": {"raw":{"language":"json"}}
+            },
+            "url": "{{base_url}}/api/v1/auth/verify-otp",
+            "description": "Tests submitting an OTP that fails digits:4 validation (e.g. 2 digits instead of 4)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422 Unprocessable Entity', function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "pm.test('Validation error indicates otp must be 4 digits', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.errors.otp[0]).to.eql('The otp field must be 4 digits.');",
+                  "});",
+                  "pm.test('Top-level message is present and non-empty string', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reset Password - Invalid Reset Token (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"reset_token\": \"0000000000000000000000000000000000000000000000000000000000000000\",\n  \"password\": \"{{new_password}}\",\n  \"password_confirmation\": \"{{new_password}}\"\n}",
+              "options": {"raw":{"language":"json"}}
+            },
+            "url": "{{base_url}}/api/v1/auth/reset-password",
+            "description": "Tests invalid/expired/used reset token. Returns 422 with exact message 'Invalid or expired password reset token.'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422 Unprocessable Entity', function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "pm.test('Message is: Invalid or expired password reset token.', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.message).to.eql('Invalid or expired password reset token.');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reset Password - Password Confirmation Mismatch (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"reset_token\": \"0000000000000000000000000000000000000000000000000000000000000000\",\n  \"password\": \"NewSecret123!\",\n  \"password_confirmation\": \"MismatchedPassword999!\"\n}",
+              "options": {"raw":{"language":"json"}}
+            },
+            "url": "{{base_url}}/api/v1/auth/reset-password",
+            "description": "Tests password confirmation rule on reset-password."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422 Unprocessable Entity', function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "pm.test('Error indicates password confirmation mismatch', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.errors.password[0]).to.eql('The password field confirmation does not match.');",
+                  "});",
+                  "pm.test('Top-level message is present and non-empty string', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reset Password - Password Under 8 Characters (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"reset_token\": \"0000000000000000000000000000000000000000000000000000000000000000\",\n  \"password\": \"short\",\n  \"password_confirmation\": \"short\"\n}",
+              "options": {"raw":{"language":"json"}}
+            },
+            "url": "{{base_url}}/api/v1/auth/reset-password",
+            "description": "Tests minimum length validation rule (min:8) on reset-password."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422 Unprocessable Entity', function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "pm.test('Error indicates password must be at least 8 characters', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.errors.password[0]).to.eql('The password field must be at least 8 characters.');",
+                  "});",
+                  "pm.test('Top-level message is present and non-empty string', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Current User - Unauthenticated (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key":"Accept","value":"application/json"}
+            ],
+            "url": "{{base_url}}/api/v1/auth/me",
+            "description": "Tests protected route /me without Bearer token. Returns 401 with message 'Unauthenticated.'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test('Returns exact message: Unauthenticated.', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.message).to.eql('Unauthenticated.');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout - Unauthenticated (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"}
+            ],
+            "url": "{{base_url}}/api/v1/auth/logout",
+            "description": "Tests logout without Bearer token. Returns 401 with message 'Unauthenticated.'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test('Returns exact message: Unauthenticated.', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.message).to.eql('Unauthenticated.');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change Password - Unauthenticated (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"Secret123!\",\n  \"password\": \"NewSecret123!\",\n  \"password_confirmation\": \"NewSecret123!\"\n}",
+              "options": {"raw":{"language":"json"}}
+            },
+            "url": "{{base_url}}/api/v1/auth/change-password",
+            "description": "Tests change-password without Bearer token. Returns 401 with 'Unauthenticated.'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 Unauthorized', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test('Returns exact message: Unauthenticated.', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.message).to.eql('Unauthenticated.');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change Password - Incorrect Current Password (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"},
+              {"key":"Authorization","value":"Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"IntentionallyWrongPassword123!\",\n  \"password\": \"NewSecret456!\",\n  \"password_confirmation\": \"NewSecret456!\"\n}",
+              "options": {"raw":{"language":"json"}}
+            },
+            "url": "{{base_url}}/api/v1/auth/change-password",
+            "description": "Tests current password verification. Requires an active Bearer token in {{token}}. Returns 422 with 'The password is incorrect.'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422 Unprocessable Entity', function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "pm.test('Error indicates current password is incorrect', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.errors.current_password[0]).to.eql('The password is incorrect.');",
+                  "});",
+                  "pm.test('Top-level message is present and non-empty string', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change Password - Same Password as Current (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key":"Accept","value":"application/json"},
+              {"key":"Content-Type","value":"application/json"},
+              {"key":"Authorization","value":"Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"{{password}}\",\n  \"password\": \"{{password}}\",\n  \"password_confirmation\": \"{{password}}\"\n}",
+              "options": {"raw":{"language":"json"}}
+            },
+            "url": "{{base_url}}/api/v1/auth/change-password",
+            "description": "Tests rule 'different:current_password'. Requires an active Bearer token in {{token}}. Returns 422 with 'The password field and current password must be different.'"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 422 Unprocessable Entity', function () {",
+                  "  pm.response.to.have.status(422);",
+                  "});",
+                  "pm.test('Error indicates password must be different', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.errors.password[0]).to.eql('The password field and current password must be different.');",
+                  "});",
+                  "pm.test('Top-level message is present and non-empty string', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.message).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Route Not Found - Non-Existent API Route (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key":"Accept","value":"application/json"}
+            ],
+            "url": "{{base_url}}/api/v1/auth/non-existent-endpoint",
+            "description": "Verifies that requesting an invalid API endpoint returns 404 with standardized top-level message and no stack trace."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404 Not Found', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "});",
+                  "pm.test('Returns standardized top-level message and no trace', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.message).to.eql('The requested resource was not found.');",
+                  "  pm.expect(data.trace).to.be.undefined;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Method Not Allowed - Unsupported HTTP Method (405)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key":"Accept","value":"application/json"}
+            ],
+            "url": "{{base_url}}/api/v1/auth/login",
+            "description": "Verifies that sending an unsupported HTTP method (GET on /login) returns 405 with standardized top-level message."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 405 Method Not Allowed', function () {",
+                  "  pm.response.to.have.status(405);",
+                  "});",
+                  "pm.test('Returns standardized top-level message and no trace', function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.message).to.eql('Method not allowed for this route.');",
+                  "  pm.expect(data.trace).to.be.undefined;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }

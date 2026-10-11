@@ -44,17 +44,50 @@ A user can be logged in on multiple devices (e.g., Desktop and Mobile) simultane
 For a browser-based Angular application, storing the Bearer token in `localStorage` is vulnerable if your application suffers an XSS (Cross-Site Scripting) attack, as JavaScript can read `localStorage`.
 *Note: Because this backend uses Sanctum API tokens instead of session cookies, you must manage token storage manually. If you require XSS-proof storage, the backend would need to be reconfigured to use Sanctum SPA cookie authentication instead of token-based authentication.*
 
-### 422 Validation Errors
-Any endpoint accepting input may return `422 Unprocessable Entity` if the input fails validation. The structure is universally:
+### Standard Error Response Structure (Angular Interceptor)
+
+Every API error returned by this backend is standardized to include a top-level **`message`** field containing a clear, non-empty string.
+
+#### 1. General Error (400, 401, 403, 404, 405, 422, 429, 500)
 ```json
 {
-  "message": "The given data was invalid.",
+  "message": "Invalid email or password."
+}
+```
+
+#### 2. Validation Error (422 Unprocessable Entity)
+When Form Request validation fails, the response contains the top-level `message` string (summarizing the validation issue) and an `errors` object containing field-specific arrays of error messages:
+```json
+{
+  "message": "The email field is required.",
   "errors": {
-    "email": ["The email field is required."],
-    "password": ["The password confirmation does not match."]
+    "email": [
+      "The email field is required."
+    ]
   }
 }
 ```
+
+#### Angular HttpInterceptor & Toastr Guidance:
+> **Important Angular Distinction (`error.message` vs `error.error.message`):**
+> In Angular's standard `HttpErrorResponse`:
+> - `error.message` is Angular's synthesized client-side / HTTP status description (e.g., `"Http failure response for http://localhost:8000/api/v1/auth/login: 422 Unprocessable Entity"`). If displayed in a Toaster, users see a technical HTTP wrapper rather than the user-friendly message from Laravel.
+> - `error.error.message` is the backend's actual JSON message string returned by Laravel (e.g., `"Invalid email or password."`).
+>
+> In your Angular `HttpInterceptor`, extract the backend message as follows:
+> ```typescript
+> catchError((error: HttpErrorResponse) => {
+>   const apiMessage = error.error?.message || 'An unexpected error occurred.';
+>   this.toastr.error(apiMessage);
+>
+>   if (error.status === 401) {
+>     this.authService.clearSession();
+>     this.router.navigate(['/login']);
+>   }
+>
+>   return throwError(() => error);
+> })
+> ```
 
 ### 429 Rate Limits
 Endpoints are protected by strict rate limits. If a limit is exceeded, the server returns `429 Too Many Requests`:
@@ -63,6 +96,7 @@ Endpoints are protected by strict rate limits. If a limit is exceeded, the serve
   "message": "Too many requests. Please try again later."
 }
 ```
+*(Or dynamic wait time messages such as `"Please wait 28 seconds before requesting a new code."` during OTP cooldown).*
 
 ---
 
@@ -317,13 +351,32 @@ Change the password while actively logged in.
 ```
 
 ### Error Responses
-- **422 Unprocessable Entity:**
+- **422 Unprocessable Entity (Incorrect Current Password):**
 ```json
 {
-  "message": "The given data was invalid.",
+  "message": "The password is incorrect.",
   "errors": {
-    "current_password": ["The provided password does not match your current password."]
+    "current_password": [
+      "The password is incorrect."
+    ]
   }
+}
+```
+- **422 Unprocessable Entity (Same Password as Current):**
+```json
+{
+  "message": "The password field and current password must be different.",
+  "errors": {
+    "password": [
+      "The password field and current password must be different."
+    ]
+  }
+}
+```
+- **401 Unauthorized:**
+```json
+{
+  "message": "Unauthenticated."
 }
 ```
 
@@ -344,8 +397,9 @@ curl -X POST https://<YOUR_API_BASE_URL>/api/v1/auth/change-password \
 
 ## Frontend Integration Checklist
 - [ ] Add an Angular `HttpInterceptor` to globally append the `Accept: application/json` header and the `Authorization: Bearer {token}` header to all requests.
+- [ ] Bind Toaster notifications to `error.error?.message` (not `error.message`) so user-friendly Laravel error messages are displayed.
 - [ ] Implement a unified error handler in your `HttpInterceptor` for `401 Unauthorized` that deletes the local token, clears local user state, and redirects the user to `/login` via the Angular `Router`.
-- [ ] Standardize parsing of `422 Unprocessable Entity` responses in your services/components to display inline form validation errors (read from `error.error.errors`).
+- [ ] Standardize parsing of `422 Unprocessable Entity` responses in your form components to display inline form validation errors (read from `error.error?.errors`).
 - [ ] During the OTP flow, start a 30-second countdown timer on the UI before allowing the user to click "Resend Code" (aligns with the backend's 30-second cooldown rate limit).
 - [ ] Ensure the OTP input explicitly blocks submission or displays a timeout error locally after 90 seconds (when the OTP expires).
-- [ ] Handle `429 Too Many Requests` gracefully by parsing the `message` string, which may contain dynamic wait-time instructions.
+- [ ] Handle `429 Too Many Requests` gracefully by parsing the `error.error?.message` string, which contains dynamic wait-time instructions during cooldowns.
