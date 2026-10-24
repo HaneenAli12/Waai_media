@@ -243,6 +243,34 @@ class AdminEventApiTest extends TestCase
         ]);
     }
 
+    public function test_update_event_strips_status_and_lifecycle_attributes(): void
+    {
+        $event = Event::factory()->draft()->create([
+            'status' => 'draft',
+            'published_at' => null,
+        ]);
+
+        Sanctum::actingAs($this->editor, ['access']);
+
+        $response = $this->patchJson("/api/v1/admin/events/{$event->id}", [
+            'status' => 'published',
+            'published_at' => '2026-01-01 00:00:00',
+            'slug' => 'custom-injected-slug',
+            'category_en' => 'Updated Category',
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.published_at', null)
+            ->assertJsonPath('data.category_en', 'Updated Category');
+
+        $this->assertNotSame('custom-injected-slug', $response->json('data.slug'));
+
+        $fresh = $event->fresh();
+        $this->assertSame('draft', $fresh->status);
+        $this->assertNull($fresh->published_at);
+    }
+
     public function test_update_regenerates_slug_for_draft_when_english_name_changes(): void
     {
         $event = Event::factory()->draft()->create([
