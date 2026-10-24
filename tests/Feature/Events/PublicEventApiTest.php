@@ -34,15 +34,15 @@ class PublicEventApiTest extends TestCase
         $this->assertNotContains($draft->id, $ids);
     }
 
-    public function test_public_index_returns_paginated_events_with_default_size_20(): void
+    public function test_public_index_returns_paginated_events_with_default_size_3(): void
     {
-        Event::factory()->count(25)->published()->create();
+        Event::factory()->count(10)->published()->create();
 
         $response = $this->getJson('/api/v1/events?timeline=all');
 
         $response->assertStatus(200)
-            ->assertJsonPath('meta.per_page', 20)
-            ->assertJsonCount(20, 'data');
+            ->assertJsonPath('meta.per_page', 3)
+            ->assertJsonCount(3, 'data');
     }
 
     public function test_public_index_supports_custom_per_page_3_for_calendar_page(): void
@@ -252,8 +252,8 @@ class PublicEventApiTest extends TestCase
             'place_ar' => 'قاعة الرياض',
             'description_en' => 'English Description',
             'description_ar' => 'الوصف بالعربية',
-            'author_name_en' => 'John Doe',
-            'author_name_ar' => 'جون دو',
+            'event_date' => '2026-11-20',
+            'event_time' => '10:00:00',
             'slug' => 'bilingual-event-101',
         ]);
 
@@ -267,12 +267,14 @@ class PublicEventApiTest extends TestCase
             ->assertJsonPath('data.name_en', 'English Name')
             ->assertJsonPath('data.name_ar', 'الاسم بالعربية')
             ->assertJsonPath('data.category', 'التكنولوجيا')
+            ->assertJsonPath('data.category_en', 'Technology')
+            ->assertJsonPath('data.category_ar', 'التكنولوجيا')
             ->assertJsonPath('data.place', 'قاعة الرياض')
+            ->assertJsonPath('data.place_en', 'Riyadh Hall')
+            ->assertJsonPath('data.place_ar', 'قاعة الرياض')
             ->assertJsonPath('data.description', 'الوصف بالعربية')
-            ->assertJsonPath('data.author_name_en', 'John Doe')
-            ->assertJsonPath('data.author_name_ar', 'جون دو')
-            ->assertJsonPath('data.author_name', 'جون دو')
-            ->assertJsonPath('data.journalist_name', 'جون دو');
+            ->assertJsonPath('data.event_date', '2026-11-20')
+            ->assertJsonPath('data.event_time', '10:00:00');
 
         // Request with Accept-Language: en
         $enResponse = $this->getJson("/api/v1/events/{$event->slug}", [
@@ -284,11 +286,13 @@ class PublicEventApiTest extends TestCase
             ->assertJsonPath('data.name_en', 'English Name')
             ->assertJsonPath('data.name_ar', 'الاسم بالعربية')
             ->assertJsonPath('data.category', 'Technology')
+            ->assertJsonPath('data.category_en', 'Technology')
+            ->assertJsonPath('data.category_ar', 'التكنولوجيا')
             ->assertJsonPath('data.place', 'Riyadh Hall')
+            ->assertJsonPath('data.place_en', 'Riyadh Hall')
+            ->assertJsonPath('data.place_ar', 'قاعة الرياض')
             ->assertJsonPath('data.description', 'English Description')
-            ->assertJsonPath('data.author_name_en', 'John Doe')
-            ->assertJsonPath('data.author_name_ar', 'جون دو')
-            ->assertJsonPath('data.author_name', 'John Doe')
-            ->assertJsonPath('data.journalist_name', 'John Doe');
+            ->assertJsonPath('data.event_date', '2026-11-20')
+            ->assertJsonPath('data.event_time', '10:00:00');
     }
 }

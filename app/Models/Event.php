@@ -26,7 +26,7 @@ class Event extends Model
      *
      * @var string
      */
-    protected $table = 'events';
+    protected $table = 'event_calendar';
 
     /**
      * The attributes that are mass assignable.
@@ -44,10 +44,8 @@ class Event extends Model
         'place_en',
         'place_ar',
         'event_date',
+        'event_time',
         'cover_image_url',
-        'author_name',
-        'author_name_en',
-        'author_name_ar',
         'url',
         'status',
         'published_at',
@@ -61,28 +59,9 @@ class Event extends Model
     protected function casts(): array
     {
         return [
-            'event_date' => 'datetime',
+            'event_date' => 'date:Y-m-d',
             'published_at' => 'datetime',
         ];
-    }
-
-    /**
-     * Alias accessor for journalist_name to support both author and journalist terminology.
-     */
-    public function getJournalistNameAttribute(): ?string
-    {
-        return $this->author_name_en ?? $this->author_name;
-    }
-
-    /**
-     * Alias mutator for journalist_name to map to author_name.
-     */
-    public function setJournalistNameAttribute(?string $value): void
-    {
-        $this->author_name = $value;
-        if ($this->author_name_en === null) {
-            $this->author_name_en = $value;
-        }
     }
 
     /**
@@ -96,21 +75,41 @@ class Event extends Model
     }
 
     /**
-     * Scope to filter upcoming events (relative to current UTC timestamp).
+     * Scope to filter upcoming events (relative to current date).
      */
     public function scopeUpcoming(Builder $query): Builder
     {
-        return $query->where('event_date', '>=', now())
-            ->orderBy('event_date', 'asc');
+        $today = now()->format('Y-m-d');
+        $currentTime = now()->format('H:i:s');
+
+        return $query->where(function (Builder $q) use ($today, $currentTime) {
+            $q->where('event_date', '>', $today)
+                ->orWhere(function (Builder $sub) use ($today, $currentTime) {
+                    $sub->where('event_date', '=', $today)
+                        ->where(function (Builder $timeSub) use ($currentTime) {
+                            $timeSub->whereNull('event_time')
+                                ->orWhere('event_time', '>=', $currentTime);
+                        });
+                });
+        })->orderBy('event_date', 'asc')->orderBy('event_time', 'asc');
     }
 
     /**
-     * Scope to filter past events (relative to current UTC timestamp).
+     * Scope to filter past events (relative to current date).
      */
     public function scopePast(Builder $query): Builder
     {
-        return $query->where('event_date', '<', now())
-            ->orderBy('event_date', 'desc');
+        $today = now()->format('Y-m-d');
+        $currentTime = now()->format('H:i:s');
+
+        return $query->where(function (Builder $q) use ($today, $currentTime) {
+            $q->where('event_date', '<', $today)
+                ->orWhere(function (Builder $sub) use ($today, $currentTime) {
+                    $sub->where('event_date', '=', $today)
+                        ->whereNotNull('event_time')
+                        ->where('event_time', '<', $currentTime);
+                });
+        })->orderBy('event_date', 'desc')->orderBy('event_time', 'desc');
     }
 
     /**
@@ -125,11 +124,11 @@ class Event extends Model
     }
 
     /**
-     * Scope to order events for public listing (chronological by event date).
+     * Scope to order events for public listing (chronological by event date then time).
      */
     public function scopeOrderedForPublic(Builder $query): Builder
     {
-        return $query->orderBy('event_date', 'asc')->orderBy('id', 'asc');
+        return $query->orderBy('event_date', 'asc')->orderBy('event_time', 'asc')->orderBy('id', 'asc');
     }
 
     /**

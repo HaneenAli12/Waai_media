@@ -11,9 +11,9 @@ use Illuminate\Http\JsonResponse;
 class EventController extends Controller
 {
     /**
-     * Default page size for public event listing.
+     * Default page size for public event listing (3 events per page).
      */
-    public const PER_PAGE = 20;
+    public const PER_PAGE = 3;
 
     /**
      * List published events with category and timeline filters.

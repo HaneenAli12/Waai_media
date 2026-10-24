@@ -112,9 +112,11 @@ class EventController extends Controller
                 $created = Event::create($validated);
 
                 $slug = $this->slugService->generateSlug($created->name_en, $created->id);
-                if ($slug !== null) {
-                    $created->update(['slug' => $slug]);
+                if ($slug === null) {
+                    throw new \RuntimeException('Failed to generate a valid slug from the provided English event title.');
                 }
+
+                $created->update(['slug' => $slug]);
 
                 return $created;
             });
@@ -197,9 +199,14 @@ class EventController extends Controller
         unset($validated['id'], $validated['status'], $validated['published_at']);
 
         DB::transaction(function () use ($event, $validated) {
-            if ($event->slug === null) {
+            $slug = $event->slug;
+            if ($slug === null) {
                 $nameEn = $validated['name_en'] ?? $event->name_en;
-                $validated['slug'] = $this->slugService->generateSlug($nameEn, $event->id);
+                $slug = $this->slugService->generateSlug($nameEn, $event->id);
+                if ($slug === null) {
+                    throw new \RuntimeException('Failed to generate a valid slug before publishing.');
+                }
+                $validated['slug'] = $slug;
             }
 
             $validated['status'] = Event::STATUS_PUBLISHED;

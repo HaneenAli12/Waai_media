@@ -78,7 +78,7 @@ class EventCoverImageLifecycleTest extends TestCase
             ->assertJsonPath('data.name_en', 'Event Without Cover Image')
             ->assertJsonPath('data.cover_image_url', null);
 
-        $this->assertDatabaseHas('events', [
+        $this->assertDatabaseHas('event_calendar', [
             'name_en' => 'Event Without Cover Image',
             'cover_image_url' => null,
         ]);
@@ -169,7 +169,7 @@ class EventCoverImageLifecycleTest extends TestCase
             ->assertJsonPath('data.place_en', 'Updated Venue')
             ->assertJsonPath('data.cover_image_url', "https://pub-r2.waai.test/{$validUuidKey}");
 
-        $this->assertDatabaseHas('events', [
+        $this->assertDatabaseHas('event_calendar', [
             'id' => $event->id,
             'cover_image_url' => $validUuidKey,
         ]);
@@ -308,7 +308,7 @@ class EventCoverImageLifecycleTest extends TestCase
             ->assertJsonPath('data.status', 'published')
             ->assertJsonPath('data.cover_image_url', "https://pub-r2.waai.test/{$r2Key}");
 
-        $this->assertDatabaseHas('events', [
+        $this->assertDatabaseHas('event_calendar', [
             'id' => $event->id,
             'status' => 'published',
             'cover_image_url' => $r2Key,
@@ -356,7 +356,7 @@ class EventCoverImageLifecycleTest extends TestCase
         $response->assertStatus(200)
             ->assertJson(['message' => 'Event permanently deleted successfully.']);
 
-        $this->assertDatabaseMissing('events', ['id' => $event->id]);
+        $this->assertDatabaseMissing('event_calendar', ['id' => $event->id]);
         Storage::disk('r2')->assertMissing($r2Key);
     }
 
@@ -374,8 +374,8 @@ class EventCoverImageLifecycleTest extends TestCase
 
         $response->assertStatus(200);
 
-        $this->assertDatabaseMissing('events', ['id' => $event1->id]);
-        $this->assertDatabaseHas('events', ['id' => $event2->id]);
+        $this->assertDatabaseMissing('event_calendar', ['id' => $event1->id]);
+        $this->assertDatabaseHas('event_calendar', ['id' => $event2->id]);
 
         // Shared object must remain intact in R2
         Storage::disk('r2')->assertExists($sharedKey);
@@ -393,7 +393,7 @@ class EventCoverImageLifecycleTest extends TestCase
         $response = $this->deleteJson("/api/v1/admin/events/{$event->id}");
 
         $response->assertStatus(200);
-        $this->assertDatabaseMissing('events', ['id' => $event->id]);
+        $this->assertDatabaseMissing('event_calendar', ['id' => $event->id]);
     }
 
     // =========================================================================
@@ -422,8 +422,8 @@ class EventCoverImageLifecycleTest extends TestCase
         $newsKey = 'news/covers/00000000-0000-4000-8000-000000000010.webp';
         $eventKey = 'events/covers/00000000-0000-4000-8000-000000000013.webp';
 
-        // Foreign module key is not transformed to a full R2 URL by the event service
-        expect($service->resolveUrl($newsKey))->toBe($newsKey);
+        // Foreign module internal key is never leaked as a public URL (returns null)
+        expect($service->resolveUrl($newsKey))->toBeNull();
 
         // Event key is properly transformed
         expect($service->resolveUrl($eventKey))->toBe("https://pub-r2.waai.test/{$eventKey}");
@@ -444,7 +444,7 @@ class EventCoverImageLifecycleTest extends TestCase
         $response = $this->deleteJson("/api/v1/admin/events/{$event->id}");
 
         $response->assertStatus(200);
-        $this->assertDatabaseMissing('events', ['id' => $event->id]);
+        $this->assertDatabaseMissing('event_calendar', ['id' => $event->id]);
 
         // News R2 object MUST NOT be deleted
         Storage::disk('r2')->assertExists($newsKey);

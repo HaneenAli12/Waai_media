@@ -4,6 +4,7 @@ namespace Tests\Feature\Events;
 
 use App\Models\Event;
 use App\Models\User;
+use App\Services\Events\EventSlugService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -67,7 +68,7 @@ class AdminEventApiTest extends TestCase
         $response = $this->deleteJson("/api/v1/admin/events/{$event->id}");
 
         $response->assertStatus(403);
-        $this->assertDatabaseHas('events', ['id' => $event->id]);
+        $this->assertDatabaseHas('event_calendar', ['id' => $event->id]);
     }
 
     public function test_admin_can_permanently_delete_event(): void
@@ -80,14 +81,14 @@ class AdminEventApiTest extends TestCase
         $response->assertStatus(200)
             ->assertJson(['message' => 'Event permanently deleted successfully.']);
 
-        $this->assertDatabaseMissing('events', ['id' => $event->id]);
+        $this->assertDatabaseMissing('event_calendar', ['id' => $event->id]);
     }
 
     // =========================================================================
     // 2. Draft Creation (Store)
     // =========================================================================
 
-    public function test_can_create_draft_with_arabic_only_title(): void
+    public function test_draft_creation_requires_english_title_and_rejects_arabic_only(): void
     {
         Sanctum::actingAs($this->editor, ['access']);
 
@@ -95,17 +96,33 @@ class AdminEventApiTest extends TestCase
             'name_ar' => 'ملتقى ريادة الأعمال 2026',
         ]);
 
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['name_en']);
+    }
+
+    public function test_can_create_draft_with_english_title_and_empty_arabic_title(): void
+    {
+        Sanctum::actingAs($this->editor, ['access']);
+
+        $response = $this->postJson('/api/v1/admin/events', [
+            'name_en' => 'Entrepreneurship Summit 2026',
+            'name_ar' => null,
+        ]);
+
         $response->assertStatus(201)
             ->assertJsonPath('data.status', 'draft')
-            ->assertJsonPath('data.name_ar', 'ملتقى ريادة الأعمال 2026')
-            ->assertJsonPath('data.name_en', null)
-            ->assertJsonPath('data.slug', null)
+            ->assertJsonPath('data.name_en', 'Entrepreneurship Summit 2026')
+            ->assertJsonPath('data.name_ar', null)
             ->assertJsonPath('data.published_at', null);
 
-        $this->assertDatabaseHas('events', [
-            'name_ar' => 'ملتقى ريادة الأعمال 2026',
+        $eventId = $response->json('data.id');
+        $this->assertSame("entrepreneurship-summit-2026-{$eventId}", $response->json('data.slug'));
+
+        $this->assertDatabaseHas('event_calendar', [
+            'id' => $eventId,
+            'name_en' => 'Entrepreneurship Summit 2026',
+            'name_ar' => null,
             'status' => 'draft',
-            'slug' => null,
         ]);
     }
 
@@ -126,7 +143,7 @@ class AdminEventApiTest extends TestCase
         $eventId = $response->json('data.id');
         $this->assertSame("future-media-summit-{$eventId}", $response->json('data.slug'));
 
-        $this->assertDatabaseHas('events', [
+        $this->assertDatabaseHas('event_calendar', [
             'id' => $eventId,
             'slug' => "future-media-summit-{$eventId}",
             'status' => 'draft',
@@ -149,71 +166,33 @@ class AdminEventApiTest extends TestCase
             ->assertJsonPath('data.category_ar', 'الصحافة الرقمية');
 
         $eventId = $response->json('data.id');
-        $this->assertDatabaseHas('events', [
+        $this->assertDatabaseHas('event_calendar', [
             'id' => $eventId,
             'category_en' => 'Digital Journalism',
             'category_ar' => 'الصحافة الرقمية',
         ]);
     }
 
-    public function test_draft_creation_converts_local_datetime_and_iana_timezone_to_utc(): void
+    public function test_draft_creation_stores_separate_event_date_and_time(): void
     {
         Sanctum::actingAs($this->admin, ['access']);
 
         $response = $this->postJson('/api/v1/admin/events', [
             'name_en' => 'Cairo Tech Gathering',
-            'event_date' => '2026-11-15 18:00:00',
-            'timezone' => 'Africa/Cairo',
+            'event_date' => '2026-11-15',
+            'event_time' => '18:00:00',
         ]);
 
         $response->assertStatus(201);
 
-        // Cairo in winter is UTC+2 -> 16:00:00 UTC
-        $this->assertDatabaseHas('events', [
+        $this->assertDatabaseHas('event_calendar', [
             'name_en' => 'Cairo Tech Gathering',
-            'event_date' => '2026-11-15 16:00:00',
+            'event_date' => '2026-11-15',
+            'event_time' => '18:00:00',
         ]);
 
-        $response->assertJsonPath('data.event_date', '2026-11-15T16:00:00.000000Z');
-    }
-
-    public function test_can_create_and_update_draft_with_bilingual_author_names(): void
-    {
-        Sanctum::actingAs($this->editor, ['access']);
-
-        $response = $this->postJson('/api/v1/admin/events', [
-            'name_en' => 'Author Test Summit',
-            'author_name_en' => 'Sarah Connor',
-            'author_name_ar' => 'سارة كونور',
-        ]);
-
-        $response->assertStatus(201)
-            ->assertJsonPath('data.author_name_en', 'Sarah Connor')
-            ->assertJsonPath('data.author_name_ar', 'سارة كونور');
-
-        $eventId = $response->json('data.id');
-
-        $this->assertDatabaseHas('events', [
-            'id' => $eventId,
-            'author_name_en' => 'Sarah Connor',
-            'author_name_ar' => 'سارة كونور',
-        ]);
-
-        // Update authors
-        $updateResponse = $this->patchJson("/api/v1/admin/events/{$eventId}", [
-            'author_name_en' => 'Sarah Connor Updated',
-            'author_name_ar' => 'سارة كونور المحدثة',
-        ]);
-
-        $updateResponse->assertStatus(200)
-            ->assertJsonPath('data.author_name_en', 'Sarah Connor Updated')
-            ->assertJsonPath('data.author_name_ar', 'سارة كونور المحدثة');
-
-        $this->assertDatabaseHas('events', [
-            'id' => $eventId,
-            'author_name_en' => 'Sarah Connor Updated',
-            'author_name_ar' => 'سارة كونور المحدثة',
-        ]);
+        $response->assertJsonPath('data.event_date', '2026-11-15')
+            ->assertJsonPath('data.event_time', '18:00:00');
     }
 
     public function test_draft_creation_strips_lifecycle_attributes(): void
@@ -258,7 +237,7 @@ class AdminEventApiTest extends TestCase
             ->assertJsonPath('data.name_en', 'Old Title')
             ->assertJsonPath('data.category_en', 'Updated Category');
 
-        $this->assertDatabaseHas('events', [
+        $this->assertDatabaseHas('event_calendar', [
             'id' => $event->id,
             'category_en' => 'Updated Category',
         ]);
@@ -297,7 +276,7 @@ class AdminEventApiTest extends TestCase
         $response->assertStatus(200)
             ->assertJsonPath('data.slug', 'immutable-slug-999');
 
-        $this->assertDatabaseHas('events', [
+        $this->assertDatabaseHas('event_calendar', [
             'id' => $event->id,
             'slug' => 'immutable-slug-999',
             'name_en' => 'Completely Different Name',
@@ -345,9 +324,8 @@ class AdminEventApiTest extends TestCase
             'category_en' => 'Technology',
             'category_ar' => 'التكنولوجيا',
             'place_en' => 'Riyadh Center',
-            'place_ar' => 'مركز الرياض',
-            'event_date' => '2026-11-25 10:00:00',
-            'timezone' => 'Asia/Riyadh',
+            'event_date' => '2026-11-25',
+            'event_time' => '10:00:00',
             'cover_image_url' => 'https://media.waaimedia.com/events/covers/sample.jpg',
         ]);
 
@@ -357,12 +335,12 @@ class AdminEventApiTest extends TestCase
 
         $this->assertNotNull($response->json('data.published_at'));
 
-        $this->assertDatabaseHas('events', [
+        $this->assertDatabaseHas('event_calendar', [
             'id' => $event->id,
             'status' => 'published',
             'slug' => "ready-to-publish-event-{$event->id}",
-            // 10:00 Riyadh (UTC+3) -> 07:00 UTC
-            'event_date' => '2026-11-25 07:00:00',
+            'event_date' => '2026-11-25',
+            'event_time' => '10:00:00',
         ]);
     }
 
@@ -418,7 +396,8 @@ class AdminEventApiTest extends TestCase
             'category_ar' => 'الإعلام',
             'place_en' => 'Jeddah Convention Center',
             'place_ar' => 'مركز جدة للمؤتمرات',
-            'event_date' => '2026-12-01 14:00:00', // already in UTC
+            'event_date' => '2026-12-01',
+            'event_time' => '14:00:00',
             'cover_image_url' => null,
         ]);
 
@@ -438,12 +417,13 @@ class AdminEventApiTest extends TestCase
         $this->assertNotNull($response->json('data.published_at'));
 
         // Verify persisted fields were preserved
-        $this->assertDatabaseHas('events', [
+        $this->assertDatabaseHas('event_calendar', [
             'id' => $event->id,
             'status' => 'published',
             'category_en' => 'Media',
             'place_en' => 'Jeddah Convention Center',
-            'event_date' => '2026-12-01 14:00:00',
+            'event_date' => '2026-12-01',
+            'event_time' => '14:00:00',
             'cover_image_url' => 'https://media.waaimedia.com/events/covers/final.jpg',
         ]);
     }
@@ -544,46 +524,43 @@ class AdminEventApiTest extends TestCase
         $this->assertNotContains($eventWithoutSpecialChars->id, $idsUnderscore);
     }
 
-    public function test_can_publish_arabic_only_draft_by_supplying_english_title_at_publish_time(): void
+    public function test_can_publish_draft_with_empty_arabic_title_by_supplying_arabic_title_at_publish_time(): void
     {
-        // 1. Create a draft with Arabic-only title
+        // 1. Create a draft with English-only title
         Sanctum::actingAs($this->admin, ['access']);
 
         $draftResponse = $this->postJson('/api/v1/admin/events', [
-            'name_ar' => 'ملتقى الابتكار والإعلام 2026',
-            'category_ar' => 'الإعلام',
-            'place_ar' => 'مركز المؤتمرات بالرياض',
-            'description_ar' => 'وصف تفصيلي للفعالية باللغة العربية.',
+            'name_en' => 'Media and Innovation Forum 2026',
+            'category_en' => 'Media',
+            'place_en' => 'Riyadh Convention Center',
+            'description_en' => 'Detailed description in English.',
         ]);
 
         $draftResponse->assertStatus(201)
             ->assertJsonPath('data.status', 'draft')
-            ->assertJsonPath('data.name_ar', 'ملتقى الابتكار والإعلام 2026')
-            ->assertJsonPath('data.name_en', null)
-            ->assertJsonPath('data.slug', null)
+            ->assertJsonPath('data.name_en', 'Media and Innovation Forum 2026')
+            ->assertJsonPath('data.name_ar', null)
             ->assertJsonPath('data.published_at', null);
 
         $eventId = $draftResponse->json('data.id');
 
-        $this->assertDatabaseHas('events', [
+        $this->assertDatabaseHas('event_calendar', [
             'id' => $eventId,
-            'name_ar' => 'ملتقى الابتكار والإعلام 2026',
-            'name_en' => null,
-            'slug' => null,
+            'name_en' => 'Media and Innovation Forum 2026',
+            'name_ar' => null,
             'status' => 'draft',
             'published_at' => null,
         ]);
 
-        // 2. Publish draft by supplying English title and remaining mandatory publication fields
+        // 2. Publish draft by supplying Arabic title and remaining mandatory publication fields
         $publishResponse = $this->postJson("/api/v1/admin/events/{$eventId}/publish", [
-            'name_en' => 'Media and Innovation Forum 2026',
-            'category_en' => 'Media',
-            'place_en' => 'Riyadh Convention Center',
-            'event_date' => '2026-12-10 09:00:00',
-            'timezone' => 'Asia/Riyadh',
+            'name_ar' => 'ملتقى الابتكار والإعلام 2026',
+            'category_ar' => 'الإعلام',
+            'place_ar' => 'مركز المؤتمرات بالرياض',
+            'description_ar' => 'وصف تفصيلي باللغة العربية.',
+            'event_date' => '2026-12-10',
+            'event_time' => '09:00:00',
             'cover_image_url' => 'https://media.waaimedia.com/events/covers/innovation-2026.jpg',
-            'author_name_en' => 'Tariq Al-Mansoor',
-            'author_name_ar' => 'طارق المنصور',
         ]);
 
         $publishResponse->assertStatus(200)
@@ -591,23 +568,19 @@ class AdminEventApiTest extends TestCase
             ->assertJsonPath('data.name_en', 'Media and Innovation Forum 2026')
             ->assertJsonPath('data.name_ar', 'ملتقى الابتكار والإعلام 2026')
             ->assertJsonPath('data.slug', "media-and-innovation-forum-2026-{$eventId}")
-            ->assertJsonPath('data.author_name_en', 'Tariq Al-Mansoor')
-            ->assertJsonPath('data.author_name_ar', 'طارق المنصور')
             ->assertJsonPath('data.cover_image_url', 'https://media.waaimedia.com/events/covers/innovation-2026.jpg');
 
         $this->assertNotNull($publishResponse->json('data.published_at'));
 
         // 3. Verify database state
-        $this->assertDatabaseHas('events', [
+        $this->assertDatabaseHas('event_calendar', [
             'id' => $eventId,
             'status' => 'published',
             'slug' => "media-and-innovation-forum-2026-{$eventId}",
             'name_en' => 'Media and Innovation Forum 2026',
             'name_ar' => 'ملتقى الابتكار والإعلام 2026',
-            // 09:00 Riyadh (UTC+3) -> 06:00:00 UTC
-            'event_date' => '2026-12-10 06:00:00',
-            'author_name_en' => 'Tariq Al-Mansoor',
-            'author_name_ar' => 'طارق المنصور',
+            'event_date' => '2026-12-10',
+            'event_time' => '09:00:00',
         ]);
 
         // 4. Verify public slug route resolves the published event
@@ -617,5 +590,53 @@ class AdminEventApiTest extends TestCase
             ->assertJsonPath('data.slug', "media-and-innovation-forum-2026-{$eventId}")
             ->assertJsonPath('data.name_en', 'Media and Innovation Forum 2026')
             ->assertJsonPath('data.name_ar', 'ملتقى الابتكار والإعلام 2026');
+    }
+
+    public function test_publish_failure_leaves_event_in_previous_state(): void
+    {
+        $event = Event::factory()->draft()->create([
+            'name_en' => 'Draft Event Prior State',
+            'status' => 'draft',
+            'published_at' => null,
+            'place_en' => null,
+        ]);
+
+        Sanctum::actingAs($this->admin, ['access']);
+
+        // Attempt publishing with incomplete fields
+        $response = $this->postJson("/api/v1/admin/events/{$event->id}/publish", []);
+
+        $response->assertStatus(422);
+
+        $fresh = $event->fresh();
+        $this->assertSame('draft', $fresh->status);
+        $this->assertNull($fresh->published_at);
+        $this->assertDatabaseHas('event_calendar', [
+            'id' => $event->id,
+            'status' => 'draft',
+            'published_at' => null,
+        ]);
+    }
+
+    public function test_slug_failure_rolls_back_store_transaction(): void
+    {
+        Sanctum::actingAs($this->admin, ['access']);
+        $this->withoutExceptionHandling();
+
+        // Mock EventSlugService to return null and force transaction abort
+        $this->mock(EventSlugService::class, function ($mock) {
+            $mock->shouldReceive('normalizeTitle')->andReturn('test-failure-rollback');
+            $mock->shouldReceive('generateSlug')->andReturn(null);
+        });
+
+        $this->assertThrows(function () {
+            $this->postJson('/api/v1/admin/events', [
+                'name_en' => 'Test Failure Rollback',
+            ]);
+        }, \RuntimeException::class);
+
+        $this->assertDatabaseMissing('event_calendar', [
+            'name_en' => 'Test Failure Rollback',
+        ]);
     }
 }

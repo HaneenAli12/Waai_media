@@ -7,8 +7,7 @@
   "database": {
     "table": "events",
     "migration_files": [
-      "database/migrations/2026_10_24_000001_create_events_table.php",
-      "database/migrations/2026_10_24_000002_add_bilingual_author_names_to_events_table.php"
+      "database/migrations/2026_10_24_000001_create_events_table.php"
     ],
     "soft_deletes": false,
     "columns": [
@@ -22,11 +21,9 @@
       { "name": "description_ar", "type": "text", "nullable": true },
       { "name": "place_en", "type": "varchar(255)", "nullable": true },
       { "name": "place_ar", "type": "varchar(255)", "nullable": true },
-      { "name": "event_date", "type": "datetime", "nullable": true, "stored_as": "UTC" },
+      { "name": "event_date", "type": "date", "nullable": true, "format": "YYYY-MM-DD" },
+      { "name": "event_time", "type": "time", "nullable": true, "format": "HH:MM:SS" },
       { "name": "cover_image_url", "type": "varchar(500)", "nullable": true },
-      { "name": "author_name", "type": "varchar(255)", "nullable": true, "note": "Legacy single-language author field. Kept for backward compatibility." },
-      { "name": "author_name_en", "type": "varchar(255)", "nullable": true, "note": "English author name added via migration 2026_10_24_000002_add_bilingual_author_names_to_events_table." },
-      { "name": "author_name_ar", "type": "varchar(255)", "nullable": true, "note": "Arabic author name added via migration 2026_10_24_000002_add_bilingual_author_names_to_events_table." },
       { "name": "url", "type": "varchar(500)", "nullable": true },
       { "name": "status", "type": "enum('draft','published')", "nullable": false, "default": "draft", "indexed": true },
       { "name": "published_at", "type": "timestamp", "nullable": true, "indexed": true },

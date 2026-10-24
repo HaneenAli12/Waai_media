@@ -15,7 +15,7 @@ class EventAdminResource extends JsonResource
     /**
      * Transform the resource into an array.
      *
-     * Full administrative view with all raw bilingual attributes and ISO 8601 UTC timestamps.
+     * Full administrative view with all raw bilingual attributes and separate event_date & event_time.
      *
      * @return array<string, mixed>
      */
@@ -33,12 +33,9 @@ class EventAdminResource extends JsonResource
             'description_ar' => $this->description_ar,
             'place_en' => $this->place_en,
             'place_ar' => $this->place_ar,
-            'event_date' => $this->event_date?->toISOString(),
+            'event_date' => $this->event_date?->format('Y-m-d') ?? ($this->attributes['event_date'] ?? null),
+            'event_time' => $this->event_time,
             'cover_image_url' => app(EventCoverImageService::class)->resolveUrl($this->cover_image_url),
-            'author_name' => $this->author_name ?? $this->author_name_en,
-            'author_name_en' => $this->author_name_en,
-            'author_name_ar' => $this->author_name_ar,
-            'journalist_name' => $this->author_name ?? $this->author_name_en,
             'url' => $this->url,
             'published_at' => $this->published_at?->toISOString(),
             'created_at' => $this->created_at?->toISOString(),

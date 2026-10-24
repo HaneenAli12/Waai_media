@@ -30,10 +30,8 @@ class EventModelTest extends TestCase
             'place_en',
             'place_ar',
             'event_date',
+            'event_time',
             'cover_image_url',
-            'author_name',
-            'author_name_en',
-            'author_name_ar',
             'url',
             'status',
             'published_at',
@@ -41,32 +39,23 @@ class EventModelTest extends TestCase
 
         $this->assertSame($expectedFillable, $event->getFillable());
         $this->assertNotContains('id', $event->getFillable());
+        $this->assertNotContains('author_name', $event->getFillable());
+        $this->assertNotContains('author_name_en', $event->getFillable());
+        $this->assertNotContains('author_name_ar', $event->getFillable());
+        $this->assertNotContains('author_id', $event->getFillable());
+        $this->assertNotContains('event_category_id', $event->getFillable());
         $this->assertNotContains('created_at', $event->getFillable());
         $this->assertNotContains('updated_at', $event->getFillable());
         $this->assertNotContains('deleted_at', $event->getFillable());
-        $this->assertNotContains('author_id', $event->getFillable());
-        $this->assertNotContains('cover_image_key', $event->getFillable());
     }
 
-    public function test_casts_properly_cast_event_date_and_published_at_to_datetime(): void
+    public function test_casts_properly_cast_event_date_and_published_at(): void
     {
         $event = new Event;
         $casts = $event->getCasts();
 
-        $this->assertSame('datetime', $casts['event_date']);
+        $this->assertSame('date:Y-m-d', $casts['event_date']);
         $this->assertSame('datetime', $casts['published_at']);
-    }
-
-    public function test_journalist_name_accessor_and_mutator_alias_to_author_name(): void
-    {
-        $event = new Event;
-
-        $event->author_name = 'Sarah Jenkins';
-        $this->assertSame('Sarah Jenkins', $event->journalist_name);
-
-        $event->journalist_name = 'Omar Farooq';
-        $this->assertSame('Omar Farooq', $event->author_name);
-        $this->assertSame('Omar Farooq', $event->journalist_name);
     }
 
     public function test_status_helper_methods_accurately_reflect_event_state(): void
@@ -104,6 +93,11 @@ class EventModelTest extends TestCase
         $this->assertNotEmpty($raw['place_en']);
         $this->assertNotEmpty($raw['place_ar']);
         $this->assertNotEmpty($raw['event_date']);
+        $this->assertNotEmpty($raw['event_time']);
+        $this->assertArrayNotHasKey('author_name', $raw);
+        $this->assertArrayNotHasKey('author_name_en', $raw);
+        $this->assertArrayNotHasKey('author_name_ar', $raw);
+        $this->assertArrayNotHasKey('event_category_id', $raw);
     }
 
     public function test_event_factory_published_state_fulfills_all_publication_invariants(): void
@@ -123,6 +117,7 @@ class EventModelTest extends TestCase
         $this->assertNotEmpty($raw['place_en']);
         $this->assertNotEmpty($raw['place_ar']);
         $this->assertNotEmpty($raw['event_date']);
+        $this->assertNotEmpty($raw['event_time']);
     }
 
     public function test_event_factory_upcoming_and_past_states_generate_correct_dates(): void

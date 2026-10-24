@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('events', function (Blueprint $table) {
+        Schema::create('event_calendar', function (Blueprint $table) {
             $table->id();
             $table->string('name_en', 255)->nullable();
             $table->string('name_ar', 255)->nullable();
@@ -22,19 +22,19 @@ return new class extends Migration
             $table->text('description_ar')->nullable();
             $table->string('place_en', 255)->nullable();
             $table->string('place_ar', 255)->nullable();
-            $table->dateTime('event_date')->nullable();
+            $table->date('event_date')->nullable();
+            $table->time('event_time')->nullable();
             $table->string('cover_image_url', 500)->nullable();
-            $table->string('author_name', 255)->nullable();
             $table->string('url', 500)->nullable();
             $table->enum('status', ['draft', 'published'])->default('draft')->index();
             $table->timestamp('published_at')->nullable()->index();
             $table->timestamps();
 
             // Query optimization indexes
-            $table->index(['status', 'event_date'], 'idx_events_timeline');
-            $table->index(['category_en'], 'idx_events_category_en');
-            $table->index(['category_ar'], 'idx_events_category_ar');
-            $table->index(['created_at', 'id'], 'idx_events_created_id');
+            $table->index(['status', 'event_date', 'event_time'], 'idx_event_calendar_timeline');
+            $table->index(['category_en'], 'idx_event_calendar_category_en');
+            $table->index(['category_ar'], 'idx_event_calendar_category_ar');
+            $table->index(['created_at', 'id'], 'idx_event_calendar_created_id');
         });
     }
 
@@ -43,6 +43,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('events');
+        Schema::dropIfExists('event_calendar');
     }
 };

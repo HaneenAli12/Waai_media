@@ -35,11 +35,9 @@ class EventFactory extends Factory
             'description_ar' => 'وصف تفصيلي للفعالية باللغة العربية بدون وسوم تنسيقية.',
             'place_en' => 'Riyadh Exhibition Center',
             'place_ar' => 'مركز الرياض للمعارض',
-            'event_date' => now()->addDays(fake()->numberBetween(1, 30))->format('Y-m-d H:i:s'),
+            'event_date' => now()->addDays(fake()->numberBetween(1, 30))->format('Y-m-d'),
+            'event_time' => '10:00:00',
             'cover_image_url' => null,
-            'author_name' => fake()->name(),
-            'author_name_en' => fake()->name(),
-            'author_name_ar' => 'الكاتب التجريبي',
             'url' => fake()->optional()->url(),
             'status' => Event::STATUS_DRAFT,
             'published_at' => null,
@@ -48,10 +46,6 @@ class EventFactory extends Factory
 
     /**
      * Define the event as published.
-     *
-     * In accordance with publication invariants, published fixtures have all
-     * mandatory bilingual fields populated, a valid R2 public URL, a confirmed
-     * date, and an immutable unique slug.
      */
     public function published(): static
     {
@@ -73,11 +67,9 @@ class EventFactory extends Factory
                 'description_ar' => $attributes['description_ar'] ?? 'وصف الفعالية المنشورة باللغة العربية بدون وسوم تنسيقية.',
                 'place_en' => $attributes['place_en'] ?? 'Riyadh Exhibition Center',
                 'place_ar' => $attributes['place_ar'] ?? 'مركز الرياض للمعارض',
-                'event_date' => $attributes['event_date'] ?? now()->addDays(7)->format('Y-m-d H:i:s'),
+                'event_date' => $attributes['event_date'] ?? now()->addDays(7)->format('Y-m-d'),
+                'event_time' => $attributes['event_time'] ?? '18:30:00',
                 'cover_image_url' => $attributes['cover_image_url'] ?? 'https://media.waaimedia.com/events/covers/'.fake()->uuid().'.jpg',
-                'author_name' => $attributes['author_name'] ?? fake()->name(),
-                'author_name_en' => $attributes['author_name_en'] ?? fake()->name(),
-                'author_name_ar' => $attributes['author_name_ar'] ?? 'الكاتب التجريبي',
                 'url' => $attributes['url'] ?? fake()->optional()->url(),
                 'published_at' => $attributes['published_at'] ?? now()->subHour(),
             ];
@@ -105,7 +97,8 @@ class EventFactory extends Factory
     {
         return $this->state(function (array $attributes) use ($daysInFuture) {
             return [
-                'event_date' => now()->addDays($daysInFuture)->format('Y-m-d H:i:s'),
+                'event_date' => now()->addDays($daysInFuture)->format('Y-m-d'),
+                'event_time' => '12:00:00',
             ];
         });
     }
@@ -117,7 +110,8 @@ class EventFactory extends Factory
     {
         return $this->state(function (array $attributes) use ($daysInPast) {
             return [
-                'event_date' => now()->subDays($daysInPast)->format('Y-m-d H:i:s'),
+                'event_date' => now()->subDays($daysInPast)->format('Y-m-d'),
+                'event_time' => '12:00:00',
             ];
         });
     }

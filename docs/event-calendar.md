@@ -51,9 +51,8 @@ All implementation code resides within the Laravel backend (`app/Models/Event.ph
 
 ## 3. Database Schema
 
-The module's database design is managed across two sequential, non-destructive migrations:
-1. `database/migrations/2026_10_24_000001_create_events_table.php` — Core `events` table structure, free-text categories, indexes, and constraints.
-2. `database/migrations/2026_10_24_000002_add_bilingual_author_names_to_events_table.php` — Adds bilingual author columns (`author_name_en` and `author_name_ar`).
+The module's database design is managed by:
+1. `database/migrations/2026_10_24_000001_create_events_table.php` — Core `events` table structure, free-text categories, separate `event_date` (`date`) and `event_time` (`time`), indexes, and constraints.
 
 ### Table: `events`
 
@@ -69,11 +68,9 @@ The module's database design is managed across two sequential, non-destructive m
 | `description_ar` | `TEXT` | Yes | `NULL` | Event description in Arabic (plain text) |
 | `place_en` | `VARCHAR(255)` | Yes | `NULL` | Venue / location name in English |
 | `place_ar` | `VARCHAR(255)` | Yes | `NULL` | Venue / location name in Arabic |
-| `event_date` | `DATETIME` | Yes | `NULL` | UTC scheduled event start timestamp |
+| `event_date` | `DATE` | Yes | `NULL` | Scheduled event calendar date (`YYYY-MM-DD`) |
+| `event_time` | `TIME` | Yes | `NULL` | Scheduled event start time (`HH:MM:SS`) |
 | `cover_image_url`| `VARCHAR(500)` | Yes | `NULL` | Full public HTTP/HTTPS URL or verified R2 key |
-| `author_name` | `VARCHAR(255)` | Yes | `NULL` | Legacy plain-text author name (kept for backward compatibility) |
-| `author_name_en` | `VARCHAR(255)` | Yes | `NULL` | English author name for bilingual support (added via migration `000002`) |
-| `author_name_ar` | `VARCHAR(255)` | Yes | `NULL` | Arabic author name for bilingual support (added via migration `000002`) |
 | `url` | `VARCHAR(500)` | Yes | `NULL` | External website or registration URL |
 | `status` | `ENUM('draft', 'published')` | No | `'draft'` | Current publication status |
 | `published_at` | `TIMESTAMP` | Yes | `NULL` | Timestamp when event was first published |

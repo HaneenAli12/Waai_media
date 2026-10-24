@@ -67,7 +67,8 @@ class EventCoverImageService
         }
 
         if (! $this->isR2Key($trimmed)) {
-            return $trimmed;
+            // If it is not an absolute HTTP URL and not a valid R2 key, do not leak raw internal keys
+            return null;
         }
 
         try {
@@ -79,7 +80,7 @@ class EventCoverImageService
                 $e->getMessage()
             ));
 
-            return $trimmed;
+            return null;
         }
     }
 
@@ -110,7 +111,7 @@ class EventCoverImageService
         }
 
         // Check if any other event is still referencing this key
-        $query = DB::table('events')->where('cover_image_url', $key);
+        $query = DB::table('event_calendar')->where('cover_image_url', $key);
         if ($ignoreEventId !== null) {
             $query->where('id', '!=', $ignoreEventId);
         }

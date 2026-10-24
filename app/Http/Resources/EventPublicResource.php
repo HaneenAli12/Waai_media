@@ -16,17 +16,14 @@ class EventPublicResource extends JsonResource
     /**
      * Transform the resource into an array.
      *
-     * Localized public presentation according to negotiated locale (Accept-Language).
+     * Localized public presentation according to negotiated locale (Accept-Language),
+     * with separate event_date and event_time, without author fields.
      *
      * @return array<string, mixed>
      */
     public function toArray(Request $request): array
     {
         $locale = LocaleNegotiator::negotiate($request->header('Accept-Language'));
-
-        $localizedAuthor = $locale === 'ar'
-            ? ($this->author_name_ar ?? $this->author_name_en ?? $this->author_name)
-            : ($this->author_name_en ?? $this->author_name_ar ?? $this->author_name);
 
         return [
             'id' => (int) $this->id,
@@ -42,15 +39,16 @@ class EventPublicResource extends JsonResource
             'category' => $locale === 'ar'
                 ? ($this->category_ar ?? $this->category_en)
                 : ($this->category_en ?? $this->category_ar),
+            'category_en' => $this->category_en,
+            'category_ar' => $this->category_ar,
             'place' => $locale === 'ar'
                 ? ($this->place_ar ?? $this->place_en)
                 : ($this->place_en ?? $this->place_ar),
-            'event_date' => $this->event_date?->toISOString(),
+            'place_en' => $this->place_en,
+            'place_ar' => $this->place_ar,
+            'event_date' => $this->event_date?->format('Y-m-d') ?? ($this->attributes['event_date'] ?? null),
+            'event_time' => $this->event_time,
             'cover_image_url' => app(EventCoverImageService::class)->resolveUrl($this->cover_image_url),
-            'author_name' => $localizedAuthor,
-            'author_name_en' => $this->author_name_en,
-            'author_name_ar' => $this->author_name_ar,
-            'journalist_name' => $localizedAuthor,
             'url' => $this->url,
         ];
     }
