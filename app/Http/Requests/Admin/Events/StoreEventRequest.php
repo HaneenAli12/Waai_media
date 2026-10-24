@@ -1,0 +1,163 @@
+<?php
+
+namespace App\Http\Requests\Admin\Events;
+
+use App\Services\Events\EventDateTimeService;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
+
+class StoreEventRequest extends FormRequest
+{
+    /**
+     * Determine if the user is authorized to make this request.
+     * Both Administrator and Editor roles have draft creation privileges.
+     */
+    public function authorize(): bool
+    {
+        $user = $this->user();
+
+        return $user !== null && in_array($user->role, ['admin', 'editor'], true);
+    }
+
+    /**
+     * Prepare the data for validation.
+     */
+    protected function prepareForValidation(): void
+    {
+        $toMerge = [];
+        if (! $this->has('author_name_en') && $this->has('author_name')) {
+            $toMerge['author_name_en'] = $this->input('author_name');
+        } elseif (! $this->has('author_name_en') && $this->has('journalist_name')) {
+            $toMerge['author_name_en'] = $this->input('journalist_name');
+        }
+
+        if (! $this->has('author_name') && $this->has('author_name_en')) {
+            $toMerge['author_name'] = $this->input('author_name_en');
+        }
+
+        if (! empty($toMerge)) {
+            $this->merge($toMerge);
+        }
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * Drafts may be incomplete but strictly require at least one non-empty title (Arabic or English).
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    public function rules(): array
+    {
+        return [
+            'name_en' => ['nullable', 'string', 'max:255', 'required_without:name_ar'],
+            'name_ar' => ['nullable', 'string', 'max:255', 'required_without:name_en'],
+            'category_en' => ['nullable', 'string', 'max:150'],
+            'category_ar' => ['nullable', 'string', 'max:150'],
+            'description_en' => ['nullable', 'string'],
+            'description_ar' => ['nullable', 'string'],
+            'place_en' => ['nullable', 'string', 'max:255'],
+            'place_ar' => ['nullable', 'string', 'max:255'],
+            'author_name' => ['nullable', 'string', 'max:255'],
+            'author_name_en' => ['nullable', 'string', 'max:255'],
+            'author_name_ar' => ['nullable', 'string', 'max:255'],
+            'journalist_name' => ['nullable', 'string', 'max:255'],
+            'url' => ['nullable', 'url', 'max:500'],
+            'cover_image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:10240'],
+            'cover_image_url' => ['nullable', 'url', 'max:500'],
+            'event_date' => ['nullable', 'string'],
+            'timezone' => ['required_with:event_date', 'nullable', 'string', 'timezone:all'],
+        ];
+    }
+
+    /**
+     * Custom validation messages.
+     *
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'name_en.required_without' => 'At least one event title (Arabic or English) must be provided.',
+            'name_ar.required_without' => 'At least one event title (Arabic or English) must be provided.',
+            'timezone.required_with' => 'An IANA timezone identifier (e.g. Africa/Cairo, Asia/Riyadh) is required when specifying an event date.',
+            'timezone.timezone' => 'The selected timezone is not a valid IANA timezone identifier.',
+            'cover_image.image' => 'The cover image must be a valid image file.',
+            'cover_image.mimes' => 'The cover image must be a file of type: jpeg, jpg, png, webp.',
+            'cover_image.max' => 'The cover image must not exceed 10 MB.',
+            'cover_image_url.url' => 'The cover image URL must be a valid URL.',
+            'url.url' => 'The external link must be a valid URL.',
+        ];
+    }
+
+    /**
+     * Additional validator checks for whitespace-only titles and timezone conversion feasibility.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $v) {
+            $data = $v->getData();
+            $nameEn = trim((string) ($data['name_en'] ?? $this->input('name_en')));
+            $nameAr = trim((string) ($data['name_ar'] ?? $this->input('name_ar')));
+
+            if ($nameEn === '' && $nameAr === '') {
+                $v->errors()->add('name_en', 'At least one event title (Arabic or English) must be non-empty.');
+                $v->errors()->add('name_ar', 'At least one event title (Arabic or English) must be non-empty.');
+            }
+
+            $eventDate = $data['event_date'] ?? $this->input('event_date');
+            $timezone = $data['timezone'] ?? $this->input('timezone');
+
+            if ($eventDate !== null && trim((string) $eventDate) !== '') {
+                if ($timezone === null || trim((string) $timezone) === '') {
+                    $v->errors()->add('timezone', 'An IANA timezone identifier is required when specifying an event date.');
+                } else {
+                    $dateTimeService = app(EventDateTimeService::class);
+                    try {
+                        $dateTimeService->parseLocalToUtc((string) $eventDate, (string) $timezone);
+                    } catch (\Throwable $e) {
+                        $v->errors()->add('event_date', 'The provided event date could not be parsed with the given timezone.');
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Get the validated data with server-controlled fields stripped and local datetime converted to UTC.
+     *
+     * @param  array|int|string|null  $key
+     * @param  mixed  $default
+     */
+    public function validated($key = null, $default = null): mixed
+    {
+        $validated = parent::validated();
+
+        // Protect server-controlled lifecycle attributes from client injection
+        unset(
+            $validated['id'],
+            $validated['slug'],
+            $validated['status'],
+            $validated['published_at'],
+            $validated['created_at'],
+            $validated['updated_at'],
+            $validated['deleted_at']
+        );
+
+        // Alias journalist_name to author_name
+        if (isset($validated['journalist_name']) && ! isset($validated['author_name'])) {
+            $validated['author_name'] = $validated['journalist_name'];
+        }
+        unset($validated['journalist_name']);
+
+        // Convert local date/time + IANA timezone to UTC
+        if (! empty($validated['event_date']) && ! empty($validated['timezone'])) {
+            $dateTimeService = app(EventDateTimeService::class);
+            $utc = $dateTimeService->parseLocalToUtc($validated['event_date'], $validated['timezone']);
+            $validated['event_date'] = $utc->format('Y-m-d H:i:s');
+        }
+        unset($validated['timezone']);
+
+        return data_get($validated, $key, $default);
+    }
+}

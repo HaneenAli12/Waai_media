@@ -2,7 +2,6 @@
 
 namespace App\Providers;
 
-use App\Services\Auth\SessionManager;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -24,15 +23,18 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Coarse request-level throttle to protect server resources against DoS
         RateLimiter::for('login', function (Request $request) {
-            $email = $request->input('email');
-            $key = (string) ($email ? strtolower(trim($email)) : $request->ip());
+            return Limit::perMinute(60)->by($request->ip());
+        });
 
-            return Limit::perMinute(5)->by($key);
+        // Coarse request-level throttle for token refresh
+        RateLimiter::for('refresh', function (Request $request) {
+            return Limit::perMinute(30)->by($request->ip());
         });
 
         RateLimiter::for('otp', function (Request $request) {
-            return Limit::perMinute(5)->by($request->ip());
+            return Limit::perMinute(10)->by($request->ip());
         });
 
         RateLimiter::for('change_password', function (Request $request) {
@@ -41,23 +43,13 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(5)->by($key);
         });
 
-        // Enforce 7-day inactivity token expiration in Sanctum guard
+        // Enforce token expiration on Sanctum personal access tokens
         Sanctum::authenticateAccessTokensUsing(function ($accessToken, $isValid) {
             if (! $isValid) {
                 return false;
             }
 
-            $lastActivity = $accessToken->last_used_at ?? $accessToken->created_at;
-
-            if ($lastActivity && $lastActivity->lt(now()->subDays(7))) {
-                if ($accessToken->tokenable) {
-                    app(SessionManager::class)->handleInactivityExpiration(
-                        $accessToken->tokenable,
-                        $accessToken->id,
-                        request()
-                    );
-                }
-
+            if ($accessToken->expires_at && $accessToken->expires_at->isPast()) {
                 return false;
             }
 

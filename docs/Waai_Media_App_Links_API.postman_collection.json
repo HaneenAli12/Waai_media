@@ -1,0 +1,499 @@
+{
+    "info": {
+        "_postman_id": "4e71a932-9cb8-4f51-b842-1e9d9a786311",
+        "name": "Waai Media - App Links API",
+        "description": "Comprehensive Postman Collection for the Waai Media App Links Module API (Laravel 13 backend).\n\n### Overview:\nThe App Links Module manages the mobile application download links (Google Play, Apple App Store, and Huawei AppGallery) as a singleton settings record.\n\n### Endpoints:\n- `GET /api/v1/app-links` (Public read-only, unauthenticated)\n- `PUT /api/v1/app-links` (Admin & Editor atomic singleton creation/update)\n\n### Authorization Rules:\n- Public GET is unauthenticated.\n- PUT requires `auth:sanctum`, `require.access`, and `role:admin,editor`.\n- `admin` and `editor` are authorized.\n- `viewer` and unapproved roles are rejected with HTTP 403 Forbidden.\n- Unauthenticated requests are rejected with HTTP 401 Unauthorized.\n\n### Variables:\n- `base_url`: Target host (default: `http://127.0.0.1:8000`).\n- `admin_token`: Sanctum access token for admin user.\n- `editor_token`: Sanctum access token for editor user.\n- `viewer_token`: Sanctum access token for viewer user (tests 403).\n- `token`: Shared access token.\n- `invalid_token`: Invalid or revoked token (tests 401).",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://127.0.0.1:8000",
+            "type": "string"
+        },
+        {
+            "key": "token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "admin_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "editor_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "viewer_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "invalid_token",
+            "value": "invalid_or_revoked_token_placeholder",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "1. Public API",
+            "item": [
+                {
+                    "name": "1.1 Public - Get App Links",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/app-links",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "app-links"]
+                        },
+                        "description": "Public endpoint to retrieve the official mobile app download links. Returns HTTP 200 with data: null when unconfigured, or data object with 3 fields when configured."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const response = pm.response.json();",
+                                    "pm.test('Response contains data property', function () {",
+                                    "    pm.expect(response).to.have.property('data');",
+                                    "});",
+                                    "",
+                                    "if (response.data !== null) {",
+                                    "    pm.test('Configured response contains exactly three links and no metadata', function () {",
+                                    "        pm.expect(response.data).to.have.property('google_app_link');",
+                                    "        pm.expect(response.data).to.have.property('apple_app_store_link');",
+                                    "        pm.expect(response.data).to.have.property('app_gallery_link');",
+                                    "        pm.expect(response.data).to.not.have.property('id');",
+                                    "        pm.expect(response.data).to.not.have.property('singleton_lock');",
+                                    "        pm.expect(response.data).to.not.have.property('created_at');",
+                                    "        pm.expect(response.data).to.not.have.property('updated_at');",
+                                    "    });",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "2. Admin & Editor Management (PUT)",
+            "item": [
+                {
+                    "name": "2.1 Admin - Update All Three App Links",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"google_app_link\": \"https://play.google.com/store/apps/details?id=com.waaimedia.app\",\n    \"apple_app_store_link\": \"https://apps.apple.com/app/waai-media/id123456789\",\n    \"app_gallery_link\": \"https://appgallery.huawei.com/app/C123456789\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/app-links",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "app-links"]
+                        },
+                        "description": "Atomically updates all three mobile download links as an authorized Administrator."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const response = pm.response.json();",
+                                    "pm.test('Response contains success message', function () {",
+                                    "    pm.expect(response.message).to.eql('App download links updated successfully.');",
+                                    "});",
+                                    "",
+                                    "pm.test('Data reflects updated links', function () {",
+                                    "    pm.expect(response.data.google_app_link).to.eql('https://play.google.com/store/apps/details?id=com.waaimedia.app');",
+                                    "    pm.expect(response.data.apple_app_store_link).to.eql('https://apps.apple.com/app/waai-media/id123456789');",
+                                    "    pm.expect(response.data.app_gallery_link).to.eql('https://appgallery.huawei.com/app/C123456789');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "2.2 Editor - Partial Links with Nulls",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{editor_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"google_app_link\": \"https://play.google.com/store/apps/details?id=com.waaimedia.app\",\n    \"apple_app_store_link\": null,\n    \"app_gallery_link\": null\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/app-links",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "app-links"]
+                        },
+                        "description": "Updates app links as Editor, setting unlinked platforms to null."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const response = pm.response.json();",
+                                    "pm.test('Data reflects null fields correctly', function () {",
+                                    "    pm.expect(response.data.google_app_link).to.eql('https://play.google.com/store/apps/details?id=com.waaimedia.app');",
+                                    "    pm.expect(response.data.apple_app_store_link).to.be.null;",
+                                    "    pm.expect(response.data.app_gallery_link).to.be.null;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "2.3 Admin - Empty Strings and Whitespace Normalization",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"google_app_link\": \"   \",\n    \"apple_app_store_link\": \"\",\n    \"app_gallery_link\": \"  \\t  \"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/app-links",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "app-links"]
+                        },
+                        "description": "Verifies that empty and whitespace-only strings normalize to null."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const response = pm.response.json();",
+                                    "pm.test('All whitespace inputs normalized to null', function () {",
+                                    "    pm.expect(response.data.google_app_link).to.be.null;",
+                                    "    pm.expect(response.data.apple_app_store_link).to.be.null;",
+                                    "    pm.expect(response.data.app_gallery_link).to.be.null;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "3. Authentication & Authorization Errors",
+            "item": [
+                {
+                    "name": "3.1 Unauthenticated Request (401)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"google_app_link\": \"https://play.google.com/store/apps/details?id=com.waaimedia.app\",\n    \"apple_app_store_link\": null,\n    \"app_gallery_link\": null\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/app-links",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "app-links"]
+                        },
+                        "description": "Verifies that requests without authentication token receive 401 Unauthorized."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 401', function () {",
+                                    "    pm.response.to.have.status(401);",
+                                    "});",
+                                    "pm.test('Error message is Unauthenticated.', function () {",
+                                    "    pm.expect(pm.response.json().message).to.eql('Unauthenticated.');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "3.2 Viewer Role Forbidden (403)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{viewer_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"google_app_link\": \"https://play.google.com/store/apps/details?id=com.waaimedia.app\",\n    \"apple_app_store_link\": null,\n    \"app_gallery_link\": null\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/app-links",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "app-links"]
+                        },
+                        "description": "Verifies that users with 'viewer' role are forbidden from updating links."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 403', function () {",
+                                    "    pm.response.to.have.status(403);",
+                                    "});",
+                                    "pm.test('Error message indicates forbidden permissions', function () {",
+                                    "    pm.expect(pm.response.json().message).to.eql('Forbidden. Insufficient permissions.');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "4. Validation Errors (422)",
+            "item": [
+                {
+                    "name": "4.1 Missing Required Property (422)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"google_app_link\": \"https://play.google.com/store/apps/details?id=com.waaimedia.app\",\n    \"apple_app_store_link\": null\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/app-links",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "app-links"]
+                        },
+                        "description": "Fails when a required field property is omitted from the JSON payload."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('Errors object contains app_gallery_link', function () {",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('app_gallery_link');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "4.2 Malformed URL (422)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"google_app_link\": \"not-a-valid-url\",\n    \"apple_app_store_link\": null,\n    \"app_gallery_link\": null\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/app-links",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "app-links"]
+                        },
+                        "description": "Fails when non-empty string is not a valid URL."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('Errors object contains google_app_link validation failure', function () {",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('google_app_link');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "4.3 Unsupported URI Scheme (422)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"google_app_link\": \"javascript:alert(1)\",\n    \"apple_app_store_link\": null,\n    \"app_gallery_link\": null\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/app-links",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "app-links"]
+                        },
+                        "description": "Fails when URI scheme is not http or https."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('Errors object rejects javascript scheme', function () {",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('google_app_link');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

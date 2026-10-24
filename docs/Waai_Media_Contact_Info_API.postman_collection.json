@@ -1,0 +1,1031 @@
+{
+    "info": {
+        "_postman_id": "8f3b2a19-5d41-4c6e-9820-e71a4f02cb84",
+        "name": "Waai Media - Contact Info API",
+        "description": "Comprehensive Postman Collection for the Waai Media Contact Info Module API (Laravel 13 backend).\n\n### Overview:\nThe Contact Info Module manages the official contact channels, physical address, and Google Maps location of Waai Media as a singleton settings record.\n\n### Endpoints:\n- `GET /api/v1/contact-info` (Public read-only)\n- `GET /api/v1/admin/contact-info` (Admin & Editor read)\n- `PUT /api/v1/admin/contact-info` (Admin & Editor atomic singleton creation/update)\n\n### Authentication & Security:\n- Admin endpoints require `Authorization: Bearer <access_token>` with Sanctum `access` ability.\n- Accessible by `admin` and `editor` roles.\n- Remember tokens and disallowed roles are rejected with HTTP 403 Forbidden.\n\n### Variables:\n- `base_url`: Target host (default: `http://127.0.0.1:8000`).\n- `admin_token`: Sanctum access token for admin user.\n- `editor_token`: Sanctum access token for editor user.\n- `token`: Shared access token.\n- `disallowed_role_token`: Token without access ability or with unauthorized role (tests 403).\n- `revoked_token`: Expired or invalid token (tests 401).",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://127.0.0.1:8000",
+            "type": "string"
+        },
+        {
+            "key": "token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "admin_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "editor_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "disallowed_role_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "revoked_token",
+            "value": "invalid_or_revoked_token_placeholder",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "1. Public API",
+            "item": [
+                {
+                    "name": "1.1 Public - Get Contact Info",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "contact-info"]
+                        },
+                        "description": "Public endpoint to retrieve the official contact info. Returns HTTP 200 with data: null when unconfigured, or data object with 12 fields when configured."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Response has data key', function () {",
+                                    "    var jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData).to.have.property('data');",
+                                    "    if (jsonData.data !== null) {",
+                                    "        pm.expect(jsonData.data).to.have.property('phone_1');",
+                                    "        pm.expect(jsonData.data).to.have.property('official_email');",
+                                    "        pm.expect(jsonData.data).to.have.property('facebook');",
+                                    "        pm.expect(jsonData.data).to.have.property('google_maps_url');",
+                                    "        pm.expect(jsonData.data).to.not.have.property('id');",
+                                    "        pm.expect(jsonData.data).to.not.have.property('singleton_lock');",
+                                    "        pm.expect(jsonData.data).to.not.have.property('created_at');",
+                                    "    }",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "1.2 Public - Reject POST Method (405)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 405 Method Not Allowed', function () {",
+                                    "    pm.response.to.have.status(405);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "1.3 Public - Reject DELETE Method (405)",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 405 Method Not Allowed', function () {",
+                                    "    pm.response.to.have.status(405);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "2. Admin Authentication & Authorization",
+            "item": [
+                {
+                    "name": "2.1 Admin - GET Contact Info (Admin Role - 200 OK)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test('Response structure is valid', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res).to.have.property('data');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "2.2 Admin - GET Contact Info (Editor Role - 200 OK)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{editor_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK for Editor', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "2.3 Admin - GET Unauthenticated (401)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 401 Unauthorized', function () {",
+                                    "    pm.response.to.have.status(401);",
+                                    "});",
+                                    "pm.test('Returns Unauthenticated message', function () {",
+                                    "    pm.expect(pm.response.json().message).to.eql('Unauthenticated.');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "2.4 Admin - GET Invalid / Revoked Token (401)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{revoked_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 401 Unauthorized', function () {",
+                                    "    pm.response.to.have.status(401);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "2.5 Admin - GET Disallowed Role / Remember Token (403)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{disallowed_role_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 403 Forbidden', function () {",
+                                    "    pm.response.to.have.status(403);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "2.6 Admin - PUT Unauthenticated (401)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phone_1\": \"+201000000000\",\n    \"official_email\": \"info@waaimedia.com\",\n    \"facebook\": \"https://facebook.com/waaimedia\",\n    \"instagram\": \"https://instagram.com/waaimedia\",\n    \"youtube\": \"https://youtube.com/@waaimedia\",\n    \"linkedin\": \"https://linkedin.com/company/waaimedia\",\n    \"tiktok\": \"https://tiktok.com/@waaimedia\",\n    \"whatsapp\": \"https://wa.me/201000000000\",\n    \"complete_address\": \"Damietta, Egypt\",\n    \"google_maps_url\": \"https://maps.app.goo.gl/abcdef123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 401 Unauthorized', function () {",
+                                    "    pm.response.to.have.status(401);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "2.7 Admin - PUT Disallowed Role / Remember Token (403)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{disallowed_role_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phone_1\": \"+201000000000\",\n    \"official_email\": \"info@waaimedia.com\",\n    \"facebook\": \"https://facebook.com/waaimedia\",\n    \"instagram\": \"https://instagram.com/waaimedia\",\n    \"youtube\": \"https://youtube.com/@waaimedia\",\n    \"linkedin\": \"https://linkedin.com/company/waaimedia\",\n    \"tiktok\": \"https://tiktok.com/@waaimedia\",\n    \"whatsapp\": \"https://wa.me/201000000000\",\n    \"complete_address\": \"Damietta, Egypt\",\n    \"google_maps_url\": \"https://maps.app.goo.gl/abcdef123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 403 Forbidden', function () {",
+                                    "    pm.response.to.have.status(403);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "3. Admin Successful Mutations",
+            "item": [
+                {
+                    "name": "3.1 Admin - PUT Full Contact Info (Admin Role - 200 OK)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phone_1\": \"+20 100 000 0001\",\n    \"phone_2\": \"+20 110 000 0002\",\n    \"phone_3\": \"+20 120 000 0003\",\n    \"official_email\": \"contact@waaimedia.com\",\n    \"facebook\": \"https://www.facebook.com/waaimedia\",\n    \"instagram\": \"https://www.instagram.com/waaimedia\",\n    \"youtube\": \"https://www.youtube.com/@waaimedia\",\n    \"linkedin\": \"https://www.linkedin.com/company/waaimedia\",\n    \"tiktok\": \"https://www.tiktok.com/@waaimedia\",\n    \"whatsapp\": \"https://wa.me/201000000001\",\n    \"complete_address\": \"Damietta Central District, Building 45, Floor 3, Egypt\",\n    \"google_maps_url\": \"https://maps.app.goo.gl/waaimedia123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test('Message and data are returned', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res.message).to.eql('Contact information updated successfully.');",
+                                    "    pm.expect(res.data.official_email).to.eql('contact@waaimedia.com');",
+                                    "    pm.expect(res.data.phone_1).to.eql('+20 100 000 0001');",
+                                    "    pm.expect(res.data).to.not.have.property('id');",
+                                    "    pm.expect(res.data).to.not.have.property('singleton_lock');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "3.2 Admin - PUT Full Contact Info (Editor Role - 200 OK)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{editor_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phone_1\": \"+20 100 000 0001\",\n    \"phone_2\": null,\n    \"phone_3\": null,\n    \"official_email\": \"editor_updated@waaimedia.com\",\n    \"facebook\": \"https://www.facebook.com/waaimedia\",\n    \"instagram\": \"https://www.instagram.com/waaimedia\",\n    \"youtube\": \"https://www.youtube.com/@waaimedia\",\n    \"linkedin\": \"https://www.linkedin.com/company/waaimedia\",\n    \"tiktok\": \"https://www.tiktok.com/@waaimedia\",\n    \"whatsapp\": \"https://wa.me/201000000001\",\n    \"complete_address\": \"Damietta Central District, Egypt\",\n    \"google_maps_url\": \"https://maps.app.goo.gl/waaimedia123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK for Editor', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test('Editor updated email is returned', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res.data.official_email).to.eql('editor_updated@waaimedia.com');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "3.3 Admin - PUT with Nullable Optional Phones (200 OK)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phone_1\": \"+201000000000\",\n    \"phone_2\": null,\n    \"phone_3\": null,\n    \"official_email\": \"info@waaimedia.com\",\n    \"facebook\": \"https://facebook.com/waaimedia\",\n    \"instagram\": \"https://instagram.com/waaimedia\",\n    \"youtube\": \"https://youtube.com/@waaimedia\",\n    \"linkedin\": \"https://linkedin.com/company/waaimedia\",\n    \"tiktok\": \"https://tiktok.com/@waaimedia\",\n    \"whatsapp\": \"https://wa.me/201000000000\",\n    \"complete_address\": \"Damietta, Egypt\",\n    \"google_maps_url\": \"https://maps.app.goo.gl/abcdef123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test('Optional phones are null', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res.data.phone_2).to.be.null;",
+                                    "    pm.expect(res.data.phone_3).to.be.null;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "3.4 Admin - PUT Whitespace Optional Phones (Normalized to Null - 200 OK)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phone_1\": \"+201000000000\",\n    \"phone_2\": \"   \",\n    \"phone_3\": \"\",\n    \"official_email\": \"info@waaimedia.com\",\n    \"facebook\": \"https://facebook.com/waaimedia\",\n    \"instagram\": \"https://instagram.com/waaimedia\",\n    \"youtube\": \"https://youtube.com/@waaimedia\",\n    \"linkedin\": \"https://linkedin.com/company/waaimedia\",\n    \"tiktok\": \"https://tiktok.com/@waaimedia\",\n    \"whatsapp\": \"https://wa.me/201000000000\",\n    \"complete_address\": \"Damietta, Egypt\",\n    \"google_maps_url\": \"https://maps.app.goo.gl/abcdef123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test('Whitespace phones normalized to null', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res.data.phone_2).to.be.null;",
+                                    "    pm.expect(res.data.phone_3).to.be.null;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "3.5 Admin - PUT Shortened & Complex URLs (200 OK)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phone_1\": \"+201000000000\",\n    \"official_email\": \"info@waaimedia.com\",\n    \"facebook\": \"http://fb.com/waaimedia\",\n    \"instagram\": \"https://instagr.am/p/12345\",\n    \"youtube\": \"https://youtu.be/xyz987\",\n    \"linkedin\": \"https://linkedin.com/company/waaimedia?trk=public_profile\",\n    \"tiktok\": \"https://tiktok.com/@waaimedia\",\n    \"whatsapp\": \"https://wa.me/201000000000?text=Hello%20Waai%20Media\",\n    \"complete_address\": \"Damietta, Egypt\",\n    \"google_maps_url\": \"https://maps.app.goo.gl/short456?g_st=ic#details\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK for shortened and complex URLs', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "4. Validation & Error Handling (422)",
+            "item": [
+                {
+                    "name": "4.1 Validation - Missing Required Fields (422)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phone_2\": null\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Content', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('Validation errors contain required fields', function () {",
+                                    "    var errors = pm.response.json().errors;",
+                                    "    pm.expect(errors).to.have.property('phone_1');",
+                                    "    pm.expect(errors).to.have.property('official_email');",
+                                    "    pm.expect(errors).to.have.property('facebook');",
+                                    "    pm.expect(errors).to.have.property('complete_address');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "4.2 Validation - Invalid Email Address (422)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phone_1\": \"+201000000000\",\n    \"official_email\": \"not-a-valid-email\",\n    \"facebook\": \"https://facebook.com/waaimedia\",\n    \"instagram\": \"https://instagram.com/waaimedia\",\n    \"youtube\": \"https://youtube.com/@waaimedia\",\n    \"linkedin\": \"https://linkedin.com/company/waaimedia\",\n    \"tiktok\": \"https://tiktok.com/@waaimedia\",\n    \"whatsapp\": \"https://wa.me/201000000000\",\n    \"complete_address\": \"Damietta, Egypt\",\n    \"google_maps_url\": \"https://maps.app.goo.gl/abcdef123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('Error on official_email', function () {",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('official_email');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "4.3 Validation - Invalid URL Scheme (422)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phone_1\": \"+201000000000\",\n    \"official_email\": \"info@waaimedia.com\",\n    \"facebook\": \"javascript:alert(1)\",\n    \"instagram\": \"https://instagram.com/waaimedia\",\n    \"youtube\": \"https://youtube.com/@waaimedia\",\n    \"linkedin\": \"https://linkedin.com/company/waaimedia\",\n    \"tiktok\": \"https://tiktok.com/@waaimedia\",\n    \"whatsapp\": \"https://wa.me/201000000000\",\n    \"complete_address\": \"Damietta, Egypt\",\n    \"google_maps_url\": \"https://maps.app.goo.gl/abcdef123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('Error on facebook URL scheme', function () {",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('facebook');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "4.4 Validation - Plain Text in URL Field (422)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phone_1\": \"+201000000000\",\n    \"official_email\": \"info@waaimedia.com\",\n    \"facebook\": \"https://facebook.com/waaimedia\",\n    \"instagram\": \"https://instagram.com/waaimedia\",\n    \"youtube\": \"https://youtube.com/@waaimedia\",\n    \"linkedin\": \"https://linkedin.com/company/waaimedia\",\n    \"tiktok\": \"https://tiktok.com/@waaimedia\",\n    \"whatsapp\": \"https://wa.me/201000000000\",\n    \"complete_address\": \"Damietta, Egypt\",\n    \"google_maps_url\": \"not a valid url\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('Error on google_maps_url', function () {",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('google_maps_url');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "4.5 Validation - Invalid Phone Format (422)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phone_1\": \"invalid-letters\",\n    \"official_email\": \"info@waaimedia.com\",\n    \"facebook\": \"https://facebook.com/waaimedia\",\n    \"instagram\": \"https://instagram.com/waaimedia\",\n    \"youtube\": \"https://youtube.com/@waaimedia\",\n    \"linkedin\": \"https://linkedin.com/company/waaimedia\",\n    \"tiktok\": \"https://tiktok.com/@waaimedia\",\n    \"whatsapp\": \"https://wa.me/201000000000\",\n    \"complete_address\": \"Damietta, Egypt\",\n    \"google_maps_url\": \"https://maps.app.goo.gl/abcdef123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('Error on phone_1', function () {",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('phone_1');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "4.6 Validation - Invalid Data Type (Array for Phone - 422)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phone_1\": \"+201000000000\",\n    \"phone_2\": [\"not\", \"a\", \"string\"],\n    \"official_email\": \"info@waaimedia.com\",\n    \"facebook\": \"https://facebook.com/waaimedia\",\n    \"instagram\": \"https://instagram.com/waaimedia\",\n    \"youtube\": \"https://youtube.com/@waaimedia\",\n    \"linkedin\": \"https://linkedin.com/company/waaimedia\",\n    \"tiktok\": \"https://tiktok.com/@waaimedia\",\n    \"whatsapp\": \"https://wa.me/201000000000\",\n    \"complete_address\": \"Damietta, Egypt\",\n    \"google_maps_url\": \"https://maps.app.goo.gl/abcdef123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422 and not 500', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('Error on phone_2', function () {",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('phone_2');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "5. Unsupported HTTP Methods",
+            "item": [
+                {
+                    "name": "5.1 Admin - Reject POST Method (405)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 405 Method Not Allowed', function () {",
+                                    "    pm.response.to.have.status(405);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "5.2 Admin - Reject DELETE Method (405)",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/contact-info",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "contact-info"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 405 Method Not Allowed', function () {",
+                                    "    pm.response.to.have.status(405);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

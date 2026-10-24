@@ -32,5 +32,8 @@ class DatabaseSeeder extends Seeder
                 ]
             );
         }
+
+        $this->call(CounterSeeder::class);
+        $this->call(CategorySeeder::class);
     }
 }

@@ -1,10 +1,8 @@
 <?php
 
 use App\Models\User;
-use Laravel\Sanctum\PersonalAccessToken;
 
-test('admin session expires after 7 days of inactivity', function () {
-    // 1. Authenticate using Admin
+test('admin access token expires after 1 hour absolute lifetime', function () {
     $admin = User::factory()->create(['role' => 'admin']);
 
     $loginResponse = $this->postJson('/api/v1/auth/login', [
@@ -14,19 +12,19 @@ test('admin session expires after 7 days of inactivity', function () {
 
     $token = $loginResponse->json('token');
 
-    // 3. Verify /me succeeds before inactivity
+    // 1. Valid immediately
     $this->withToken($token)->getJson('/api/v1/auth/me')->assertStatus(200);
 
-    // 4. Simulate seven days without activity (7 days + 1 second to be strictly greater)
-    $this->travel(7)->days();
-    $this->travel(1)->seconds();
+    // 2. Valid at 59 minutes
+    $this->travel(59)->minutes();
+    $this->withToken($token)->getJson('/api/v1/auth/me')->assertStatus(200);
 
-    // 5. Verify old token is rejected
+    // 3. Expired after 1 hour + 1 second
+    $this->travel(2)->minutes();
     $this->withToken($token)->getJson('/api/v1/auth/me')->assertStatus(401);
 });
 
-test('editor session expires after 7 days of inactivity', function () {
-    // 1. Authenticate using Editor
+test('editor access token expires after 1 hour absolute lifetime', function () {
     $editor = User::factory()->create(['role' => 'editor']);
 
     $loginResponse = $this->postJson('/api/v1/auth/login', [
@@ -36,18 +34,19 @@ test('editor session expires after 7 days of inactivity', function () {
 
     $token = $loginResponse->json('token');
 
-    // 3. Verify /me succeeds before inactivity
+    // 1. Valid immediately
     $this->withToken($token)->getJson('/api/v1/auth/me')->assertStatus(200);
 
-    // 4. Simulate seven days without activity
-    $this->travel(7)->days();
-    $this->travel(1)->seconds();
+    // 2. Valid at 59 minutes
+    $this->travel(59)->minutes();
+    $this->withToken($token)->getJson('/api/v1/auth/me')->assertStatus(200);
 
-    // 5. Verify old token is rejected
+    // 3. Expired after 1 hour + 1 second
+    $this->travel(2)->minutes();
     $this->withToken($token)->getJson('/api/v1/auth/me')->assertStatus(401);
 });
 
-test('admin session window is extended if activity occurs within 7 days', function () {
+test('admin access token is not extended by intermediate activity', function () {
     $admin = User::factory()->create(['role' => 'admin']);
 
     $loginResponse = $this->postJson('/api/v1/auth/login', [
@@ -56,23 +55,18 @@ test('admin session window is extended if activity occurs within 7 days', functi
     ]);
     $token = $loginResponse->json('token');
 
-    // Simulate 5 days of inactivity
-    $this->travel(5)->days();
-
-    // Activity occurs! This should update last_used_at (if > 1 min elapsed)
+    // Activity at 30 minutes
+    $this->travel(30)->minutes();
     $this->withToken($token)->getJson('/api/v1/auth/me')->assertStatus(200);
 
-    $dbToken = PersonalAccessToken::findToken($token);
-    expect($dbToken->last_used_at->diffInSeconds(now()))->toBeLessThanOrEqual(2);
+    // Travel to 65 minutes from original login (35 minutes after last request)
+    $this->travel(35)->minutes();
 
-    // Simulate another 5 days of inactivity (total 10 days since login, but only 5 since last activity)
-    $this->travel(5)->days();
-
-    // Should still be valid because the window was extended
-    $this->withToken($token)->getJson('/api/v1/auth/me')->assertStatus(200);
+    // Must be expired because 1 hour is an absolute lifetime, not a sliding window
+    $this->withToken($token)->getJson('/api/v1/auth/me')->assertStatus(401);
 });
 
-test('editor session window is extended if activity occurs within 7 days', function () {
+test('editor access token is not extended by intermediate activity', function () {
     $editor = User::factory()->create(['role' => 'editor']);
 
     $loginResponse = $this->postJson('/api/v1/auth/login', [
@@ -81,18 +75,13 @@ test('editor session window is extended if activity occurs within 7 days', funct
     ]);
     $token = $loginResponse->json('token');
 
-    // Simulate 5 days of inactivity
-    $this->travel(5)->days();
-
-    // Activity occurs! This should update last_used_at (if > 1 min elapsed)
+    // Activity at 30 minutes
+    $this->travel(30)->minutes();
     $this->withToken($token)->getJson('/api/v1/auth/me')->assertStatus(200);
 
-    $dbToken = PersonalAccessToken::findToken($token);
-    expect($dbToken->last_used_at->diffInSeconds(now()))->toBeLessThanOrEqual(2);
+    // Travel to 65 minutes from original login
+    $this->travel(35)->minutes();
 
-    // Simulate another 5 days of inactivity (total 10 days since login, but only 5 since last activity)
-    $this->travel(5)->days();
-
-    // Should still be valid because the window was extended
-    $this->withToken($token)->getJson('/api/v1/auth/me')->assertStatus(200);
+    // Must be expired
+    $this->withToken($token)->getJson('/api/v1/auth/me')->assertStatus(401);
 });

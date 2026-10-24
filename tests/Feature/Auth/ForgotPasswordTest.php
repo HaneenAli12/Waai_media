@@ -41,7 +41,7 @@ test('forgot password dispatches PasswordResetOtpMail to the correct user', func
         'email' => 'mailtest@example.com',
     ]);
 
-    Mail::assertSent(PasswordResetOtpMail::class, function ($mail) {
+    Mail::assertQueued(PasswordResetOtpMail::class, function ($mail) {
         return $mail->hasTo('mailtest@example.com');
     });
 });

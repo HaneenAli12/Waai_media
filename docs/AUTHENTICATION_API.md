@@ -1,405 +1,299 @@
-# Authentication API Documentation
+# Waai Media — Authentication API Documentation (Phase 2 Hardened)
 
-This document describes the authentication endpoints for the Waai Media frontend application. The authentication flow uses Laravel Sanctum to issue Bearer tokens. 
+This document describes the hardened authentication architecture and API contract for the Waai Media applications (Laravel 13 API backend, Angular Admin Dashboard, and Angular Public Website).
 
-The API is fully verified against the backend configuration, ensuring exactly documented rate limits, timeouts, session rules, and concurrency safety.
+The system uses **Laravel Sanctum** with strict token ability separation, HttpOnly secure cookies, double-submit CSRF protection, fixed 30-day session windows, atomic token rotation with replay detection, and layered failure rate limiting.
 
 ---
 
-## Endpoint Summary
+## 1. Architecture & Security Model
 
-| Endpoint | Method | Requires Auth | Purpose |
+### Token Separation & Delivery
+
+| Feature | Access Token | Remember Token |
+| :--- | :--- | :--- |
+| **Storage Table** | `personal_access_tokens` | `personal_access_tokens` |
+| **Sanctum Ability** | `access` | `remember` |
+| **Lifetime** | 1 hour absolute (`min(now() + 1h, session_deadline)`) | Fixed 30 days from original login |
+| **Delivery Mechanism** | Returned in Login/Refresh JSON response | Delivered strictly via `HttpOnly`, `SameSite` Cookie (`waai_remember_token`) |
+| **Client Storage** | Angular **in-memory** only (never `localStorage`) | Browser cookie jar (managed automatically by browser) |
+| **Transmission** | `Authorization: Bearer <access_token>` | Automatic via Cookie header on credentialed requests |
+| **Usage Scope** | Normal protected API endpoints (`/me`, `/change-password`, etc.) | Strictly restricted to `/api/v1/auth/refresh` & cookie `/logout` |
+
+> **Security Rule:** Any request presenting a Remember Token on normal protected API routes is rejected with **`403 Forbidden`** by the `RequireAccessTokenAbility` middleware.
+
+### Fixed 30-Day Remember Me Session Window
+- When `remember: true` is supplied during login, an original session deadline (`original_login_at + 30 days`) is anchored in `user_sessions.session_expires_at`.
+- Token rotation on `/refresh` does **NOT** extend this 30-day deadline.
+- When refreshing close to the 30-day boundary (e.g. 15 minutes remaining), the newly minted Access Token's `expires_in` is capped to remaining session time (900 seconds instead of 3600).
+- When `remember: false`, no remember token or cookie is issued, and any stale cookie is cleared.
+
+### Token Rotation & Replay Attack Detection
+- Every refresh atomically generates a new Remember Token, invalidates the old Remember Token, and records its SHA-256 hash in `remember_token_rotations`.
+- **Concurrency Grace Period (30 seconds):** Legitimate duplicate requests (e.g. network retry or concurrent tab loads within 30s) succeed without revoking the session.
+- **Replay Compromise Detection:** If an invalidated Remember Token is presented **after** the 30-second grace period, the system detects a token replay/theft attack, immediately revokes the entire device session and all associated tokens, and responds with `401 Unauthorized`.
+
+---
+
+## 2. Endpoint Summary
+
+| Endpoint | Method | Auth / Credentials | Purpose |
 | :--- | :--- | :--- | :--- |
-| `/api/v1/auth/login` | `POST` | No | Log in and receive a Bearer token. |
-| `/api/v1/auth/forgot-password` | `POST` | No | Request a 4-digit OTP code via email. |
-| `/api/v1/auth/verify-otp` | `POST` | No | Verify OTP to get a single-use reset token. |
-| `/api/v1/auth/reset-password` | `POST` | No | Reset password & **revoke all existing sessions**. |
-| `/api/v1/auth/me` | `GET` | Yes | Get the authenticated user's profile and session. |
-| `/api/v1/auth/logout` | `POST` | Yes | Log out and revoke **only the current** token. |
-| `/api/v1/auth/change-password` | `POST` | Yes | Change password & **revoke other devices' sessions**. |
+| `/api/v1/auth/csrf-token` | `GET` | Public | Obtains signed CSRF token and sets readable `XSRF-TOKEN` cookie. |
+| `/api/v1/auth/login` | `POST` | Public | Authenticates credentials; issues Access Token and optional Remember Cookie. |
+| `/api/v1/auth/refresh` | `POST` | Remember Cookie + CSRF | Rotates Remember Token and issues fresh Access Token without Bearer header. |
+| `/api/v1/auth/logout` | `POST` | Access Token OR Remember Cookie | Revokes current device session and clears remember cookie. |
+| `/api/v1/auth/logout-all` | `POST` | Access Token | Revokes all active sessions and tokens for user across all devices. |
+| `/api/v1/auth/me` | `GET` | Bearer Access Token | Returns authenticated profile and session metadata. |
+| `/api/v1/auth/change-password`| `POST` | Bearer Access Token | Updates password, revoking other devices while preserving current device. |
+| `/api/v1/auth/forgot-password`| `POST` | Public | Requests 4-digit OTP via queued email (timing attack mitigated). |
+| `/api/v1/auth/verify-otp` | `POST` | Public | Verifies 4-digit OTP and issues 64-character single-use reset token. |
+| `/api/v1/auth/reset-password` | `POST` | Public | Consumes reset token, resets password, and revokes all sessions on all devices. |
 
 ---
 
-## General Rules & Headers
+## 3. Detailed Endpoint Contracts
 
-All requests require the following headers to ensure correct JSON responses:
+### 3.1 CSRF Token Bootstrap
 
-```http
-Accept: application/json
-Content-Type: application/json
-```
+Obtain a CSRF token for cookie-authenticated endpoints (`/refresh` and cookie-based `/logout`).
 
-For endpoints that require authentication, include the Bearer token returned from `/login`:
+**Endpoint:** `GET /api/v1/auth/csrf-token`
 
-```http
-Authorization: Bearer 1|abcdefghijklmnopqrstuvwxyz1234567890
-```
-
-### Multiple-Device Session Support
-A user can be logged in on multiple devices (e.g., Desktop and Mobile) simultaneously.
-- **Login:** Generating a new token on a new device will *not* invalidate previous tokens.
-- **Logout:** Logging out on one device invalidates *only* the token used for that request. Other devices will remain logged in.
-
-### Token Security (Frontend Guidance)
-For a browser-based Angular application, storing the Bearer token in `localStorage` is vulnerable if your application suffers an XSS (Cross-Site Scripting) attack, as JavaScript can read `localStorage`.
-*Note: Because this backend uses Sanctum API tokens instead of session cookies, you must manage token storage manually. If you require XSS-proof storage, the backend would need to be reconfigured to use Sanctum SPA cookie authentication instead of token-based authentication.*
-
-### Standard Error Response Structure (Angular Interceptor)
-
-Every API error returned by this backend is standardized to include a top-level **`message`** field containing a clear, non-empty string.
-
-#### 1. General Error (400, 401, 403, 404, 405, 422, 429, 500)
+#### Response (200 OK)
+Sets unencrypted, readable cookie `XSRF-TOKEN` (`HttpOnly=false`, `SameSite=Lax`, `Path=/`).
 ```json
 {
-  "message": "Invalid email or password."
+  "csrf_token": "4a7f8e...signed_token"
 }
 ```
-
-#### 2. Validation Error (422 Unprocessable Entity)
-When Form Request validation fails, the response contains the top-level `message` string (summarizing the validation issue) and an `errors` object containing field-specific arrays of error messages:
-```json
-{
-  "message": "The email field is required.",
-  "errors": {
-    "email": [
-      "The email field is required."
-    ]
-  }
-}
-```
-
-#### Angular HttpInterceptor & Toastr Guidance:
-> **Important Angular Distinction (`error.message` vs `error.error.message`):**
-> In Angular's standard `HttpErrorResponse`:
-> - `error.message` is Angular's synthesized client-side / HTTP status description (e.g., `"Http failure response for http://localhost:8000/api/v1/auth/login: 422 Unprocessable Entity"`). If displayed in a Toaster, users see a technical HTTP wrapper rather than the user-friendly message from Laravel.
-> - `error.error.message` is the backend's actual JSON message string returned by Laravel (e.g., `"Invalid email or password."`).
->
-> In your Angular `HttpInterceptor`, extract the backend message as follows:
-> ```typescript
-> catchError((error: HttpErrorResponse) => {
->   const apiMessage = error.error?.message || 'An unexpected error occurred.';
->   this.toastr.error(apiMessage);
->
->   if (error.status === 401) {
->     this.authService.clearSession();
->     this.router.navigate(['/login']);
->   }
->
->   return throwError(() => error);
-> })
-> ```
-
-### 429 Rate Limits
-Endpoints are protected by strict rate limits. If a limit is exceeded, the server returns `429 Too Many Requests`:
-```json
-{
-  "message": "Too many requests. Please try again later."
-}
-```
-*(Or dynamic wait time messages such as `"Please wait 28 seconds before requesting a new code."` during OTP cooldown).*
 
 ---
 
-## 1. Login
+### 3.2 Login
 
-Log into the application and receive a Bearer token.
+Authenticate user with layered failure rate limiting, multi-device support, and optional 30-day Remember Me cookie.
 
 **Endpoint:** `POST /api/v1/auth/login`  
-**Rate Limit:** 5 requests per minute (per normalized email or IP)
+**Rate Limits:** 
+- 5 failed attempts per normalized email + IP per minute
+- 10 failed attempts per IP per minute
+- 50 failed attempts per IP per 15 minutes
 
-### Request Body
+#### Request Body
+```json
+{
+  "email": "admin@example.com",
+  "password": "SecretPassword123!",
+  "device_name": "Chrome on Windows",
+  "remember": true
+}
+```
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `email` | `string` | Yes | User's email address (case-insensitive) |
-| `password` | `string` | Yes | User's password |
-| `device_name` | `string` | Optional | Identifier for the user's current device (max: 100) |
+| `email` | `string` | Yes | User's email address (normalized automatically) |
+| `password` | `string` | Yes | Account password |
+| `device_name` | `string` | Optional | Client device label (defaults to "Web Browser") |
+| `remember` | `boolean`| Optional | If `true`, sets 30-day HttpOnly cookie. Defaults to `false`. |
 
-### Success Response (200 OK)
-Save the `token` securely on the client (e.g., in memory or a secure cookie/storage).
+#### Success Response (200 OK)
 ```json
 {
   "message": "Login successful.",
-  "token": "1|abcdef123456",
+  "token": "1|abcdef123456...",
   "token_type": "Bearer",
+  "expires_in": 3600,
   "user": {
     "id": 1,
-    "name": "Jane Doe",
-    "email": "jane@example.com",
-    "role": "editor"
+    "name": "Admin User",
+    "email": "admin@example.com",
+    "role": "admin"
   },
   "session_id": 45
 }
 ```
+- When `remember: true`, response header sets:  
+  `Set-Cookie: waai_remember_token=<token>; Path=/api/v1/auth; Max-Age=2592000; HttpOnly; SameSite=Lax`
+- Remember Token is **NEVER** returned in JSON.
 
-### Error Responses
-- **422 Unprocessable Entity:** `"message": "Invalid email or password."`
-- **422 Unprocessable Entity:** `"message": "Account is deactivated."`
-
-### cURL Example
-```bash
-curl -X POST https://<YOUR_API_BASE_URL>/api/v1/auth/login \
-  -H "Accept: application/json" \
-  -H "Content-Type: application/json" \
-  -d '{"email": "jane@example.com", "password": "SecretPassword123!", "device_name": "iPhone 15"}'
-```
+#### Error Responses
+- **422 Unprocessable Entity:** `{"message": "Invalid email or password."}` (Timing-safe)
+- **422 Unprocessable Entity:** `{"message": "Account is deactivated."}`
+- **429 Too Many Requests:** `{"message": "Too many failed login attempts. Please try again later."}` with `Retry-After: 60` header.
 
 ---
 
-## 2. Forgot Password (Request OTP)
+### 3.3 Refresh Token
 
-Request a 4-digit OTP for password recovery. 
-*Security Note: To prevent enumeration, this endpoint will return a 200 OK success message even if the email does not exist.*
+Restores or rotates a session using the HttpOnly Remember Cookie. Does not require a valid Access Token.
 
-**Endpoint:** `POST /api/v1/auth/forgot-password`  
-**Rate Limits:** 
-- 1 request per 30 seconds (cooldown per email)
-- Maximum 6 successful emails sent per 60 minutes (per email)
-- 20 requests per hour (per IP)
-- 5 requests per minute (throttle limit per IP)
+**Endpoint:** `POST /api/v1/auth/refresh`  
+**Headers Required:**
+```http
+Accept: application/json
+Origin: http://localhost:4200 (or http://localhost:4201)
+X-XSRF-TOKEN: <csrf_token_from_XSRF-TOKEN_cookie>
+```
+**Credentials:** Client must send request with cookies (`withCredentials: true`).
 
-### Request Body
-| Field | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `email` | `string` | Yes | Email address of the account |
-
-### Success Response (200 OK)
+#### Success Response (200 OK)
 ```json
 {
-  "message": "If an account exists with that email, a password reset code has been sent."
+  "message": "Token refreshed successfully.",
+  "token": "2|new_access_token_value...",
+  "token_type": "Bearer",
+  "expires_in": 3600
 }
 ```
+- Sets rotated `waai_remember_token` cookie in response headers.
+- Old Remember Token cannot be reused outside 30s grace period.
 
-### Error Responses
-- **429 Too Many Requests:** `"message": "Please wait X seconds before requesting a new code."` (Cooldown triggered)
-- **429 Too Many Requests:** `"message": "Too many requests for this email. Please try again later."` (Max 6 sends/hr triggered)
-- **429 Too Many Requests:** `"message": "Please wait a moment before requesting again."` (Concurrent bypass lock)
-
-### cURL Example
-```bash
-curl -X POST https://<YOUR_API_BASE_URL>/api/v1/auth/forgot-password \
-  -H "Accept: application/json" \
-  -H "Content-Type: application/json" \
-  -d '{"email": "jane@example.com"}'
-```
+#### Error Responses
+- **401 Unauthorized:** `{"message": "Remember token cookie missing or invalid."}`
+- **401 Unauthorized:** `{"message": "Remember token has expired."}`
+- **401 Unauthorized:** `{"message": "Token replay detected. Session revoked."}` (Triggered if rotated token reused)
+- **403 Forbidden:** `{"message": "Forbidden. Invalid request origin."}`
+- **419 Page Expired:** `{"message": "CSRF token mismatch."}`
 
 ---
 
-## 3. Verify OTP
+### 3.4 Logout Current Device
 
-Verify the 4-digit code sent to the user's email.
+Terminates the active session on this device and revokes both Access and Remember credentials.
 
-**Endpoint:** `POST /api/v1/auth/verify-otp`  
-**Security Rules:**
-- The OTP expires strictly after **90 seconds**.
-- The OTP becomes permanently invalid after **3 incorrect attempts**.
-- Re-requesting an OTP via `/forgot-password` instantly invalidates the previous pending OTP.
+**Endpoint:** `POST /api/v1/auth/logout`
 
-### Request Body
-| Field | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `email` | `string` | Yes | Email address of the account |
-| `otp` | `string` | Yes | The exact 4-digit OTP |
+#### Case A: Normal Logout (Access Token Valid)
+- **Header:** `Authorization: Bearer <access_token>`
+- Revokes current access token and paired remember token.
+- Clears `waai_remember_token` cookie.
 
-### Success Response (200 OK)
-The `reset_token` is a 64-character string required for the final reset step. It expires in 5 minutes (300 seconds) and is strictly single-use.
-```json
-{
-  "message": "OTP verified successfully.",
-  "reset_token": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2",
-  "expires_in": 300
-}
-```
+#### Case B: Expired Access Token Fallback
+- If Access Token is expired, Angular sends `POST /api/v1/auth/logout` with credentials (`waai_remember_token` cookie + `X-XSRF-TOKEN` header).
+- Server verifies cookie, revokes the remembered session and its tokens, and expires the cookie.
 
-### Error Responses
-- **400 Bad Request:** `"message": "No active OTP request found for this email address."`
-- **422 Unprocessable Entity:** `"message": "Invalid verification code. Attempts remaining: X."`
-- **422 Unprocessable Entity:** `"message": "The verification code has expired. Please request a new code."`
-- **429 Too Many Requests:** `"message": "Maximum verification attempts exceeded. Please request a new code."`
-
-### cURL Example
-```bash
-curl -X POST https://<YOUR_API_BASE_URL>/api/v1/auth/verify-otp \
-  -H "Accept: application/json" \
-  -H "Content-Type: application/json" \
-  -d '{"email": "jane@example.com", "otp": "1234"}'
-```
-
----
-
-## 4. Reset Password
-
-Finalize the password recovery using the `reset_token`. 
-*Security Note: A successful reset will immediately terminate all active sessions across all devices for this user. The user must log in again.*
-
-**Endpoint:** `POST /api/v1/auth/reset-password`  
-
-### Request Body
-| Field | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `email` | `string` | Yes | Email address of the account |
-| `reset_token` | `string` | Yes | The 64-character token from `/verify-otp` |
-| `password` | `string` | Yes | New password (minimum 8 characters) |
-| `password_confirmation` | `string` | Yes | Must exactly match `password` |
-
-### Success Response (200 OK)
-```json
-{
-  "message": "Password has been reset successfully. Please log in with your new password."
-}
-```
-
-### Error Responses
-- **422 Unprocessable Entity:** `"message": "Invalid or expired password reset token."`
-
-### cURL Example
-```bash
-curl -X POST https://<YOUR_API_BASE_URL>/api/v1/auth/reset-password \
-  -H "Accept: application/json" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "jane@example.com", 
-    "reset_token": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2",
-    "password": "NewPassword123!",
-    "password_confirmation": "NewPassword123!"
-  }'
-```
-
----
-
-## 5. Get Current User Profile (`/me`)
-
-Retrieve the authenticated user's profile and active session context.
-
-**Endpoint:** `GET /api/v1/auth/me`  
-**Headers:** `Authorization: Bearer {token}`
-
-### Success Response (200 OK)
-```json
-{
-  "user": {
-    "id": 1,
-    "name": "Jane Doe",
-    "email": "jane@example.com",
-    "role": "editor",
-    "created_at": "2026-10-01T12:00:00.000000Z"
-  },
-  "session": {
-    "id": 45,
-    "device_name": "iPhone 15",
-    "ip_address": "192.168.1.1",
-    "created_at": "2026-10-10T14:22:11.000000Z"
-  }
-}
-```
-
-### Error Response
-- **401 Unauthorized:** Missing, revoked, or expired token. Note: Tokens expire automatically after 7 days of complete inactivity.
-
-### cURL Example
-```bash
-curl -X GET https://<YOUR_API_BASE_URL>/api/v1/auth/me \
-  -H "Accept: application/json" \
-  -H "Authorization: Bearer 1|abcdef123456"
-```
-
----
-
-## 6. Logout
-
-Terminate the current device's session.
-
-**Endpoint:** `POST /api/v1/auth/logout`  
-**Headers:** `Authorization: Bearer {token}`
-
-### Success Response (200 OK)
+#### Success Response (200 OK)
 ```json
 {
   "message": "Successfully logged out."
 }
 ```
-*Frontend Integration Note:* Discard the token locally after receiving this response. Other logged-in devices are unaffected.
-
-### cURL Example
-```bash
-curl -X POST https://<YOUR_API_BASE_URL>/api/v1/auth/logout \
-  -H "Accept: application/json" \
-  -H "Authorization: Bearer 1|abcdef123456"
-```
 
 ---
 
-## 7. Change Password
+### 3.5 Logout All Devices
 
-Change the password while actively logged in.
-*Security Note: Unlike Reset Password, a successful Change Password keeps the CURRENT session active, but revokes the tokens belonging to ALL OTHER devices.*
+Revokes all active sessions, access tokens, and remember tokens for this user across all devices.
+
+**Endpoint:** `POST /api/v1/auth/logout-all`  
+**Headers:** `Authorization: Bearer <access_token>`
+
+#### Success Response (200 OK)
+```json
+{
+  "message": "Successfully logged out from all devices."
+}
+```
+- Clears current browser's remember cookie.
+- All tokens belonging to this user on any device are permanently deleted.
+
+---
+
+### 3.6 Change Password
+
+Updates password while logged in. Revokes all other devices while preserving the current session.
 
 **Endpoint:** `POST /api/v1/auth/change-password`  
-**Headers:** `Authorization: Bearer {token}`
+**Headers:** `Authorization: Bearer <access_token>`
 
-### Request Body
-| Field | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `current_password` | `string` | Yes | The user's existing password |
-| `password` | `string` | Yes | New password (minimum 8 chars, must differ from current) |
-| `password_confirmation` | `string` | Yes | Must exactly match `password` |
+#### Request Body
+```json
+{
+  "current_password": "OldPassword123!",
+  "password": "NewSecretPassword456!",
+  "password_confirmation": "NewSecretPassword456!"
+}
+```
 
-### Success Response (200 OK)
+#### Success Response (200 OK)
 ```json
 {
   "message": "Password successfully changed."
 }
 ```
 
-### Error Responses
-- **422 Unprocessable Entity (Incorrect Current Password):**
+---
+
+### 3.7 Password Recovery (OTP)
+
+#### 1. Forgot Password (Request OTP)
+**Endpoint:** `POST /api/v1/auth/forgot-password`  
+- Preserves approved limits: 4 numeric digits, 90s expiry, 3 verification attempts, 6 sends/hr, 30s resend cooldown.
+- Queues email asynchronously to prevent timing attacks and SMTP delay leakage.
+- Returns identical response for existing and nonexistent emails.
+
 ```json
 {
-  "message": "The password is incorrect.",
-  "errors": {
-    "current_password": [
-      "The password is incorrect."
-    ]
-  }
-}
-```
-- **422 Unprocessable Entity (Same Password as Current):**
-```json
-{
-  "message": "The password field and current password must be different.",
-  "errors": {
-    "password": [
-      "The password field and current password must be different."
-    ]
-  }
-}
-```
-- **401 Unauthorized:**
-```json
-{
-  "message": "Unauthenticated."
+  "message": "If an account exists with that email, a password reset code has been sent."
 }
 ```
 
-### cURL Example
-```bash
-curl -X POST https://<YOUR_API_BASE_URL>/api/v1/auth/change-password \
-  -H "Accept: application/json" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer 1|abcdef123456" \
-  -d '{
-    "current_password": "OldPassword123!",
-    "password": "NewPassword123!",
-    "password_confirmation": "NewPassword123!"
-  }'
+#### 2. Verify OTP
+**Endpoint:** `POST /api/v1/auth/verify-otp`  
+Request: `{"email": "user@example.com", "otp": "4821"}`  
+Success Response (200 OK):
+```json
+{
+  "message": "OTP verified successfully.",
+  "reset_token": "64_character_hex_token...",
+  "expires_in": 300
+}
 ```
+
+#### 3. Reset Password
+**Endpoint:** `POST /api/v1/auth/reset-password`  
+Request:
+```json
+{
+  "email": "user@example.com",
+  "reset_token": "64_character_hex_token...",
+  "password": "BrandNewPassword123!",
+  "password_confirmation": "BrandNewPassword123!"
+}
+```
+- Consumes reset token once.
+- Revokes **all active sessions and tokens across all devices**.
 
 ---
 
-## Frontend Integration Checklist
-- [ ] Add an Angular `HttpInterceptor` to globally append the `Accept: application/json` header and the `Authorization: Bearer {token}` header to all requests.
-- [ ] Bind Toaster notifications to `error.error?.message` (not `error.message`) so user-friendly Laravel error messages are displayed.
-- [ ] Implement a unified error handler in your `HttpInterceptor` for `401 Unauthorized` that deletes the local token, clears local user state, and redirects the user to `/login` via the Angular `Router`.
-- [ ] Standardize parsing of `422 Unprocessable Entity` responses in your form components to display inline form validation errors (read from `error.error?.errors`).
-- [ ] During the OTP flow, start a 30-second countdown timer on the UI before allowing the user to click "Resend Code" (aligns with the backend's 30-second cooldown rate limit).
-- [ ] Ensure the OTP input explicitly blocks submission or displays a timeout error locally after 90 seconds (when the OTP expires).
-- [ ] Handle `429 Too Many Requests` gracefully by parsing the `error.error?.message` string, which contains dynamic wait-time instructions during cooldowns.
+## 4. Angular Integration Guide
+
+### Token Lifecycle & Memory Storage
+Angular should maintain the current Access Token strictly in an in-memory variable (e.g. within an `AuthService` private variable or `BehaviorSubject`), **never in `localStorage` or `sessionStorage`**.
+
+### App Initialization & Session Restoration
+When the Angular application bootstraps (`APP_INITIALIZER` or Angular Router Guard):
+1. Angular checks if an in-memory Access Token exists.
+2. If none exists (e.g. on fresh page load or page refresh), Angular attempts to restore the session by calling `/api/v1/auth/refresh` with credentials enabled (`withCredentials: true`).
+3. If `/refresh` succeeds (200 OK):
+   - Store the new `token` in memory.
+   - Proceed to requested route.
+4. If `/refresh` returns 401 or 419:
+   - User does not have an active Remember Me session. Redirect to `/login`.
+
+### Single-Flight Refresh Interceptor
+To avoid sending multiple concurrent refresh requests when multiple parallel API requests fail with 401:
+- Use an RxJS `BehaviorSubject` or locking mechanism in your `HttpInterceptor`.
+- When the first 401 occurs, initiate `/refresh`.
+- Queue subsequent 401 requests until `/refresh` completes.
+- Retry queued requests with the new Access Token (maximum 1 retry).
+- If refresh fails, clear auth state and redirect to `/login`.
+
+### CORS & Credential Configuration
+In Angular `HttpClient`:
+```typescript
+// Always pass withCredentials for cookie endpoints:
+this.http.post('/api/v1/auth/refresh', {}, { withCredentials: true });
+this.http.post('/api/v1/auth/logout', {}, { withCredentials: true });
+```
+And ensure your Angular proxy or environment configuration targets the correct API base URL.

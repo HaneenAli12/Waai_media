@@ -4,7 +4,7 @@ use App\Models\User;
 use App\Models\UserSession;
 use Laravel\Sanctum\PersonalAccessToken;
 
-test('token inactive for more than 7 days is revoked with inactivity_expired', function () {
+test('access token expires after 1 hour absolute lifetime', function () {
     $user = User::factory()->create();
 
     $loginResponse = $this->postJson('/api/v1/auth/login', [
@@ -12,36 +12,24 @@ test('token inactive for more than 7 days is revoked with inactivity_expired', f
         'password' => 'password',
     ]);
     $token = $loginResponse->json('token');
-    $sessionId = $loginResponse->json('session_id');
 
-    // Simulate inactivity of 8 days (exceeding 7-day limit)
-    $dbToken = PersonalAccessToken::findToken($token);
-    $dbToken->forceFill([
-        'last_used_at' => now()->subDays(8),
-    ])->save();
+    // Token is valid initially
+    $this->withToken($token)
+        ->getJson('/api/v1/auth/me')
+        ->assertStatus(200);
 
-    // Request should be rejected with 401
+    // Fast-forward past 1 hour (60 minutes + 1 second)
+    $this->travel(60)->minutes();
+    $this->travel(1)->seconds();
+
+    // Request must be rejected with 401 because 1-hour access lifetime expired
     $response = $this->withToken($token)
         ->getJson('/api/v1/auth/me');
 
     $response->assertStatus(401);
-
-    // Token should be deleted
-    expect(PersonalAccessToken::findToken($token))->toBeNull();
-
-    // Session should be revoked with reason 'inactivity_expired'
-    $session = UserSession::find($sessionId);
-    expect($session->revoked_at)->not->toBeNull();
-    expect($session->revocation_reason)->toBe('inactivity_expired');
-
-    // Activity log should record the inactivity expiration
-    $this->assertDatabaseHas('activity_logs', [
-        'user_id' => $user->id,
-        'action' => 'auth.inactivity_expired',
-    ]);
 });
 
-test('token active within 7 days is permitted and updates last_used_at', function () {
+test('access token is valid within 1 hour window', function () {
     $user = User::factory()->create();
 
     $loginResponse = $this->postJson('/api/v1/auth/login', [
@@ -50,14 +38,63 @@ test('token active within 7 days is permitted and updates last_used_at', functio
     ]);
     $token = $loginResponse->json('token');
 
-    // Simulate activity 2 days ago
-    $dbToken = PersonalAccessToken::findToken($token);
-    $dbToken->forceFill([
-        'last_used_at' => now()->subDays(2),
-    ])->save();
+    // Fast-forward 30 minutes (within 1 hour window)
+    $this->travel(30)->minutes();
 
     $response = $this->withToken($token)
         ->getJson('/api/v1/auth/me');
 
     $response->assertStatus(200);
+});
+
+test('ordinary protected endpoints reject remember token with 403 forbidden', function () {
+    $user = User::factory()->create();
+
+    $loginResponse = $this->postJson('/api/v1/auth/login', [
+        'email' => $user->email,
+        'password' => 'password',
+        'remember' => true,
+    ]);
+
+    // Retrieve the remember token created in database
+    $session = UserSession::where('user_id', $user->id)->first();
+    expect($session->remember_token_id)->not->toBeNull();
+
+    $rememberTokenRecord = PersonalAccessToken::find($session->remember_token_id);
+    expect($rememberTokenRecord->can('remember'))->toBeTrue();
+    expect($rememberTokenRecord->can('access'))->toBeFalse();
+
+    // Attempt to access ordinary protected endpoint /me using Remember Token as Bearer token
+    // We construct the token format ID|plaintext (or use token instance)
+    $fakeBearer = $rememberTokenRecord->id.'|testsecret';
+    // Let's test with a real remember token
+    $plainRemember = $user->createToken('Test Remember Only', ['remember'])->plainTextToken;
+
+    $response = $this->withToken($plainRemember)
+        ->getJson('/api/v1/auth/me');
+
+    $response->assertStatus(403)
+        ->assertJson([
+            'message' => 'Forbidden. This endpoint requires an access token.',
+        ]);
+});
+
+test('activity within 1 hour does not extend absolute access token expiration', function () {
+    $user = User::factory()->create();
+
+    $loginResponse = $this->postJson('/api/v1/auth/login', [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+    $token = $loginResponse->json('token');
+
+    // Activity at 40 minutes
+    $this->travel(40)->minutes();
+    $this->withToken($token)->getJson('/api/v1/auth/me')->assertStatus(200);
+
+    // Travel another 25 minutes (total 65 minutes since login)
+    $this->travel(25)->minutes();
+
+    // Must be expired even though activity occurred at 40 minutes (absolute lifetime, not sliding)
+    $this->withToken($token)->getJson('/api/v1/auth/me')->assertStatus(401);
 });

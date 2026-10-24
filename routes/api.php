@@ -1,19 +1,93 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\EventController as AdminEventController;
+use App\Http\Controllers\Api\Admin\NewsController;
+use App\Http\Controllers\Api\AppLinkController;
 use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\ContactInfoController;
+use App\Http\Controllers\Api\CounterController;
+use App\Http\Controllers\Api\EventController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
+    // CSRF token endpoint for SPA clients (Angular)
+    Route::get('/csrf-token', [AuthController::class, 'csrfToken']);
+
     // Public authentication routes (with rate limiting)
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
+    Route::post('/refresh', [AuthController::class, 'refresh'])->middleware(['throttle:refresh', 'api.csrf']);
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:otp');
     Route::post('/verify-otp', [AuthController::class, 'verifyOtp'])->middleware('throttle:otp');
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:otp');
 
-    // Authenticated session routes
-    Route::middleware(['auth:sanctum', 'token.inactivity'])->group(function () {
+    // Logout endpoint (supports both Bearer Access Token and Cookie-based logout when access token has expired)
+    Route::post('/logout', [AuthController::class, 'logout']);
+
+    // Protected API routes requiring a valid Bearer Access Token with 'access' ability
+    Route::middleware(['auth:sanctum', 'require.access'])->group(function () {
         Route::get('/me', [AuthController::class, 'me']);
-        Route::post('/logout', [AuthController::class, 'logout']);
+        Route::post('/logout-all', [AuthController::class, 'logoutAll']);
         Route::post('/change-password', [AuthController::class, 'changePassword'])->middleware('throttle:change_password');
     });
 });
+
+// =========================================================================
+// Counters Module Endpoints
+// =========================================================================
+
+// Public read-only endpoint (no authentication required)
+Route::get('/counters', [CounterController::class, 'index']);
+
+// Admin Dashboard endpoints (requires authenticated Admin or Editor)
+Route::prefix('admin')->middleware(['auth:sanctum', 'require.access', 'role:admin,editor'])->group(function () {
+    Route::get('/counters', [App\Http\Controllers\Api\Admin\CounterController::class, 'index']);
+    Route::put('/counters', [App\Http\Controllers\Api\Admin\CounterController::class, 'update']);
+    Route::patch('/counters', [App\Http\Controllers\Api\Admin\CounterController::class, 'update']);
+
+    // Contact Info Dashboard endpoints
+    Route::get('/contact-info', [App\Http\Controllers\Api\Admin\ContactInfoController::class, 'show']);
+    Route::put('/contact-info', [App\Http\Controllers\Api\Admin\ContactInfoController::class, 'update']);
+
+    // News Module Admin Endpoints
+    Route::get('/news', [NewsController::class, 'index']);
+    Route::post('/news', [NewsController::class, 'store']);
+    Route::get('/news/{news}', [NewsController::class, 'show']);
+    Route::match(['put', 'patch'], '/news/{news}', [NewsController::class, 'update']);
+    Route::match(['post', 'patch'], '/news/{news}/publish', [NewsController::class, 'publish']);
+    Route::match(['post', 'patch'], '/news/{news}/unpublish', [NewsController::class, 'unpublish']);
+    Route::delete('/news/{news}', [NewsController::class, 'destroy'])
+        ->middleware('role:admin');
+
+    // Calendar Events Module Admin Endpoints
+    Route::get('/events', [AdminEventController::class, 'index']);
+    Route::post('/events', [AdminEventController::class, 'store']);
+    Route::get('/events/{event}', [AdminEventController::class, 'show']);
+    Route::match(['put', 'patch'], '/events/{event}', [AdminEventController::class, 'update']);
+    Route::match(['post', 'patch'], '/events/{event}/publish', [AdminEventController::class, 'publish']);
+    Route::delete('/events/{event}', [AdminEventController::class, 'destroy'])
+        ->middleware('role:admin');
+});
+
+// =========================================================================
+// Contact Info Public Endpoint
+// =========================================================================
+Route::get('/contact-info', [ContactInfoController::class, 'index']);
+
+// =========================================================================
+// Calendar Events Module Public Endpoints
+// =========================================================================
+Route::get('/events', [EventController::class, 'index']);
+Route::get('/events/{slug}', [EventController::class, 'show']);
+
+// =========================================================================
+// App Links Module Endpoints
+// =========================================================================
+Route::get('/app-links', [AppLinkController::class, 'index']);
+Route::put('/app-links', [AppLinkController::class, 'update'])
+    ->middleware(['auth:sanctum', 'require.access', 'role:admin,editor']);
+
+// =========================================================================
+// Categories Module Endpoints (Public Shared Read-Only)
+// =========================================================================
+Route::get('/categories', [CategoryController::class, 'index']);

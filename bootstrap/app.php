@@ -2,7 +2,8 @@
 
 use App\Http\Middleware\AuthorizeRole;
 use App\Http\Middleware\EditorCannotDelete;
-use App\Http\Middleware\EnforceTokenInactivity;
+use App\Http\Middleware\RequireAccessTokenAbility;
+use App\Http\Middleware\ValidateApiCsrf;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
@@ -12,6 +13,8 @@ use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\Http\Middleware\CheckAbilities;
+use Laravel\Sanctum\Http\Middleware\CheckForAnyAbility;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
@@ -29,7 +32,16 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => AuthorizeRole::class,
             'editor.no_delete' => EditorCannotDelete::class,
-            'token.inactivity' => EnforceTokenInactivity::class,
+            'token.inactivity' => RequireAccessTokenAbility::class,
+            'require.access' => RequireAccessTokenAbility::class,
+            'api.csrf' => ValidateApiCsrf::class,
+            'abilities' => CheckAbilities::class,
+            'ability' => CheckForAnyAbility::class,
+        ]);
+
+        $middleware->encryptCookies(except: [
+            'XSRF-TOKEN',
+            'waai_remember_token',
         ]);
 
         $middleware->api(append: [

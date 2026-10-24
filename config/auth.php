@@ -129,4 +129,29 @@ return [
     'otp_max_sends' => (int) env('OTP_MAX_SENDS', 6),
     'otp_send_window_minutes' => (int) env('OTP_SEND_WINDOW_MINUTES', 60),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Remember Me & Token Lifetimes
+    |--------------------------------------------------------------------------
+    */
+
+    'access_token_lifetime_seconds' => (int) env('ACCESS_TOKEN_LIFETIME_SECONDS', 3600),
+    'remember_session_lifetime_days' => (int) env('REMEMBER_SESSION_LIFETIME_DAYS', 30),
+    'remember_cookie_name' => env('REMEMBER_COOKIE_NAME', 'waai_remember_token'),
+    'remember_cookie_path' => env('REMEMBER_COOKIE_PATH', '/api/v1/auth'),
+    'remember_cookie_domain' => env('SESSION_DOMAIN', null),
+    'remember_cookie_secure' => env('REMEMBER_COOKIE_SECURE', null),
+    'remember_cookie_same_site' => env('REMEMBER_COOKIE_SAME_SITE', 'lax'),
+    'rotation_grace_period_seconds' => (int) env('ROTATION_GRACE_PERIOD_SECONDS', 30),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Layered Login Rate Limiting
+    |--------------------------------------------------------------------------
+    */
+
+    'failed_login_email_ip_limit' => (int) env('FAILED_LOGIN_EMAIL_IP_LIMIT', 5),
+    'failed_login_ip_limit' => (int) env('FAILED_LOGIN_IP_LIMIT', 10),
+    'failed_login_ip_15m_limit' => (int) env('FAILED_LOGIN_IP_15M_LIMIT', 50),
+
 ];

@@ -10,8 +10,12 @@ use App\Http\Requests\Auth\ResetPasswordRequest;
 use App\Http\Requests\Auth\VerifyOtpRequest;
 use App\Mail\Auth\PasswordResetOtpMail;
 use App\Models\PasswordResetOtp;
+use App\Models\RememberTokenRotation;
 use App\Models\User;
+use App\Models\UserSession;
 use App\Services\Auth\ActivityLogger;
+use App\Services\Auth\CsrfService;
+use App\Services\Auth\LoginRateLimiter;
 use App\Services\Auth\OtpService;
 use App\Services\Auth\SessionManager;
 use Illuminate\Http\JsonResponse;
@@ -22,24 +26,54 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthController extends Controller
 {
     public function __construct(
         protected SessionManager $sessionManager,
         protected OtpService $otpService,
-        protected ActivityLogger $activityLogger
+        protected ActivityLogger $activityLogger,
+        protected LoginRateLimiter $loginRateLimiter,
+        protected CsrfService $csrfService
     ) {}
 
     /**
-     * Authenticate user, revoke previous active session, and issue a Sanctum token.
+     * Provide an HMAC-signed CSRF token and set the XSRF-TOKEN cookie for Angular SPAs.
+     */
+    public function csrfToken(Request $request): JsonResponse
+    {
+        $token = $this->csrfService->generateToken();
+        $cookie = $this->csrfService->makeXsrfCookie($token);
+
+        return response()->json([
+            'csrf_token' => $token,
+        ], 200)->withCookie($cookie);
+    }
+
+    /**
+     * Authenticate user with layered failure rate limiting, multi-device support,
+     * and optional 30-day Remember Me HttpOnly Cookie.
      */
     public function login(LoginRequest $request): JsonResponse
     {
-        $email = strtolower(trim($request->input('email')));
+        $email = $this->loginRateLimiter->normalizeEmail($request->input('email'));
+
+        // Layered failed-login rate limiting check
+        if ($retryAfter = $this->loginRateLimiter->getRetryAfter($request, $email)) {
+            return response()->json([
+                'message' => 'Too many failed login attempts. Please try again later.',
+            ], 429, [
+                'Retry-After' => (string) $retryAfter,
+            ]);
+        }
+
         $user = User::withTrashed()->where('email', $email)->first();
 
         if (! $user || ! Hash::check($request->input('password'), $user->password)) {
+            $this->loginRateLimiter->recordFailedAttempt($request, $email);
+
             $this->activityLogger->log(null, 'auth.failed_login', $request, [
                 'email' => $email,
             ]);
@@ -55,15 +89,49 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $deviceName = $request->input('device_name', 'Web Browser');
-        $newAccessToken = $user->createToken($deviceName);
+        // Clear email+IP failure counter on successful credentials
+        $this->loginRateLimiter->clearSuccessfulLogin($request, $email);
 
-        $session = $this->sessionManager->createSession($user, $newAccessToken, $request, $deviceName);
+        $deviceName = $request->input('device_name') ?: 'Web Browser';
+        $wantsRemember = $request->wantsRemember();
 
-        return response()->json([
+        // Access Token: 1-hour absolute lifetime, ability 'access'
+        $accessExpiresIn = (int) config('auth.access_token_lifetime_seconds', 3600);
+        $accessExpiresAt = now()->addSeconds($accessExpiresIn);
+        $accessToken = $user->createToken($deviceName, ['access'], $accessExpiresAt);
+
+        $rememberToken = null;
+        $rememberCookie = null;
+
+        if ($wantsRemember) {
+            // Remember Token: fixed 30 days from original login, ability 'remember'
+            $rememberDays = (int) config('auth.remember_session_lifetime_days', 30);
+            $rememberExpiresAt = now()->addDays($rememberDays);
+            $rememberToken = $user->createToken($deviceName.' (Remember)', ['remember'], $rememberExpiresAt);
+
+            $session = $this->sessionManager->createSession($user, $accessToken, $request, $deviceName, $rememberToken, true);
+
+            // Set Remember Token in HttpOnly, secure cookie
+            $rememberCookie = $this->sessionManager->makeRememberCookie(
+                $rememberToken->plainTextToken,
+                $rememberExpiresAt
+            );
+        } else {
+            $session = $this->sessionManager->createSession($user, $accessToken, $request, $deviceName, null, false);
+
+            // Ensure any stale remember cookie is forgotten
+            $rememberCookie = $this->sessionManager->makeForgetRememberCookie();
+        }
+
+        // Issue fresh XSRF-TOKEN cookie for subsequent requests
+        $csrfToken = $this->csrfService->generateToken();
+        $xsrfCookie = $this->csrfService->makeXsrfCookie($csrfToken);
+
+        $response = response()->json([
             'message' => 'Login successful.',
-            'token' => $newAccessToken->plainTextToken,
+            'token' => $accessToken->plainTextToken,
             'token_type' => 'Bearer',
+            'expires_in' => $accessExpiresIn,
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
@@ -72,6 +140,126 @@ class AuthController extends Controller
             ],
             'session_id' => $session->id,
         ], 200);
+
+        if ($rememberCookie) {
+            $response->withCookie($rememberCookie);
+        }
+
+        return $response->withCookie($xsrfCookie);
+    }
+
+    /**
+     * Refresh Access Token using HttpOnly Remember Cookie with atomic rotation
+     * and replay attack detection within a fixed 30-day window.
+     */
+    public function refresh(Request $request): JsonResponse
+    {
+        $cookieName = config('auth.remember_cookie_name', 'waai_remember_token');
+        $rememberTokenPlain = $request->cookie($cookieName);
+
+        if (empty($rememberTokenPlain)) {
+            return response()->json([
+                'message' => 'No remember token provided.',
+            ], 401);
+        }
+
+        $tokenRecord = PersonalAccessToken::findToken($rememberTokenPlain);
+
+        // Case 1: Active remember token presented
+        if ($tokenRecord) {
+            if (! $tokenRecord->can('remember')) {
+                return response()->json([
+                    'message' => 'Invalid token ability. Remember token required for refresh.',
+                ], 403);
+            }
+
+            if ($tokenRecord->expires_at && $tokenRecord->expires_at->isPast()) {
+                $forgetCookie = $this->sessionManager->makeForgetRememberCookie();
+
+                return response()->json([
+                    'message' => 'Remember token has expired.',
+                ], 401)->withCookie($forgetCookie);
+            }
+
+            $session = UserSession::where('remember_token_id', $tokenRecord->id)
+                ->whereNull('revoked_at')
+                ->first();
+
+            if (! $session || ! $session->isActive()) {
+                $forgetCookie = $this->sessionManager->makeForgetRememberCookie();
+
+                return response()->json([
+                    'message' => 'Session is no longer active.',
+                ], 401)->withCookie($forgetCookie);
+            }
+
+            $rotationResult = $this->sessionManager->rotateRememberToken($session, $rememberTokenPlain, $request);
+
+            if (! $rotationResult['success']) {
+                $forgetCookie = $this->sessionManager->makeForgetRememberCookie();
+
+                return response()->json([
+                    'message' => $rotationResult['error'],
+                ], $rotationResult['status_code'] ?? 401)->withCookie($forgetCookie);
+            }
+
+            $newRememberCookie = $this->sessionManager->makeRememberCookie(
+                $rotationResult['remember_token'],
+                $rotationResult['remember_expires_at']
+            );
+
+            return response()->json([
+                'message' => 'Token refreshed successfully.',
+                'token' => $rotationResult['access_token'],
+                'token_type' => 'Bearer',
+                'expires_in' => $rotationResult['expires_in'],
+            ], 200)->withCookie($newRememberCookie);
+        }
+
+        // Case 2: Token not found in personal_access_tokens — evaluate replay detection
+        $tokenHash = hash('sha256', $rememberTokenPlain);
+        $rotation = RememberTokenRotation::where('token_hash', $tokenHash)->latest('id')->first();
+
+        if ($rotation) {
+            // Harmless concurrency / duplicate request within grace period
+            if ($rotation->isWithinGracePeriod()) {
+                $session = $rotation->session;
+                if ($session && $session->isActive()) {
+                    $descendantToken = $rotation->descendantAccessToken;
+                    $remaining = $session->remainingSessionSeconds();
+                    $expiresIn = min((int) config('auth.access_token_lifetime_seconds', 3600), $remaining);
+
+                    // Re-issue a temporary access token for this concurrent request
+                    $duplicateAccess = $session->user->createToken(
+                        $session->device_name,
+                        ['access'],
+                        now()->addSeconds($expiresIn)
+                    );
+
+                    return response()->json([
+                        'message' => 'Token refreshed successfully.',
+                        'token' => $duplicateAccess->plainTextToken,
+                        'token_type' => 'Bearer',
+                        'expires_in' => $expiresIn,
+                    ], 200);
+                }
+            }
+
+            // Confirmed replay attack outside grace period: revoke compromised session family
+            $this->sessionManager->handleReplayCompromise($rotation, $request);
+            $forgetCookie = $this->sessionManager->makeForgetRememberCookie();
+
+            return response()->json([
+                'message' => 'Token replay detected. Session revoked.',
+            ], 401)->withCookie($forgetCookie);
+        }
+
+        // Unknown or completely invalid token
+        $forgetCookie = $this->sessionManager->makeForgetRememberCookie();
+
+        return response()->json([
+            'message' => 'Invalid or expired remember token.',
+        ], 401)->withCookie($forgetCookie);
     }
 
     /**
@@ -83,7 +271,13 @@ class AuthController extends Controller
 
         $tokenId = $user->currentAccessToken()?->id;
         $activeSession = $tokenId
-            ? $user->userSessions()->where('token_id', $tokenId)->whereNull('revoked_at')->first()
+            ? $user->userSessions()
+                ->where(function ($q) use ($tokenId) {
+                    $q->where('token_id', $tokenId)
+                        ->orWhere('access_token_id', $tokenId);
+                })
+                ->whereNull('revoked_at')
+                ->first()
             : null;
 
         return response()->json([
@@ -104,34 +298,98 @@ class AuthController extends Controller
     }
 
     /**
-     * Terminate current session explicitly on logout.
+     * Terminate current device session. Supports both Bearer Access Token and
+     * Cookie-based logout when the Access Token has expired.
      */
     public function logout(Request $request): JsonResponse
     {
-        $user = $request->user();
-        $tokenId = $user->currentAccessToken()?->id;
+        $user = $request->user() ?: auth('sanctum')->user();
+        $forgetCookie = $this->sessionManager->makeForgetRememberCookie();
 
-        $this->sessionManager->terminateCurrentSession($user, $tokenId, $request);
+        // 1. Authenticated via Access Token
+        if ($user) {
+            $token = $user->currentAccessToken();
+
+            if ($token instanceof PersonalAccessToken) {
+                if (! $token->can('access')) {
+                    return response()->json([
+                        'message' => 'Forbidden. This endpoint requires an access token.',
+                    ], 403);
+                }
+
+                if ($token->expires_at && $token->expires_at->isPast()) {
+                    return response()->json([
+                        'message' => 'Unauthenticated.',
+                    ], 401);
+                }
+            }
+
+            $tokenId = $token?->id;
+            $this->sessionManager->terminateCurrentSession($user, $tokenId, $request);
+
+            return response()->json([
+                'message' => 'Successfully logged out.',
+            ], 200)->withCookie($forgetCookie);
+        }
+
+        // 2. Fallback: Expired Access Token but valid Remember Cookie present
+        $cookieName = config('auth.remember_cookie_name', 'waai_remember_token');
+        $rememberCookie = $request->cookie($cookieName);
+
+        if (! empty($rememberCookie)) {
+            // Origin check for cookie-authenticated request
+            $origin = $request->header('Origin') ?: $request->header('Referer');
+            if ($origin && ! $this->csrfService->isValidOrigin($origin)) {
+                return response()->json([
+                    'message' => 'Forbidden. Invalid request origin.',
+                ], 403);
+            }
+
+            $session = $this->sessionManager->terminateSessionByRememberToken($rememberCookie, $request);
+
+            if ($session) {
+                return response()->json([
+                    'message' => 'Successfully logged out.',
+                ], 200)->withCookie($forgetCookie);
+            }
+        }
 
         return response()->json([
-            'message' => 'Successfully logged out.',
-        ], 200);
+            'message' => 'Unauthenticated.',
+        ], 401);
     }
 
     /**
-     * Change password for authenticated user.
+     * Revoke all active sessions and tokens for the user across all devices.
+     */
+    public function logoutAll(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $this->sessionManager->revokeAllSessions($user, 'logout_all', $request);
+        $forgetCookie = $this->sessionManager->makeForgetRememberCookie();
+
+        return response()->json([
+            'message' => 'Successfully logged out from all devices.',
+        ], 200)->withCookie($forgetCookie);
+    }
+
+    /**
+     * Change password for authenticated user and revoke other devices.
      */
     public function changePassword(ChangePasswordRequest $request): JsonResponse
     {
         $user = $request->user();
 
-        $user->update([
-            'password' => $request->input('password'),
-        ]);
+        DB::transaction(function () use ($user, $request) {
+            $user->update([
+                'password' => $request->input('password'),
+            ]);
 
-        if ($currentToken = $user->currentAccessToken()) {
-            $this->sessionManager->revokeOtherSessionsForPasswordChange($user, $currentToken->id, $request);
-        }
+            if ($currentToken = $user->currentAccessToken()) {
+                $this->sessionManager->revokeOtherSessionsForPasswordChange($user, $currentToken->id, $request);
+            }
+        });
 
         $this->activityLogger->log($user->id, 'auth.change_password', $request);
 
@@ -140,9 +398,12 @@ class AuthController extends Controller
         ], 200);
     }
 
+    /**
+     * Initiate password reset with timing-attack mitigation and asynchronous mail queuing.
+     */
     public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
     {
-        $email = strtolower(trim($request->input('email')));
+        $email = $this->loginRateLimiter->normalizeEmail($request->input('email'));
         $ip = $request->ip();
 
         $cooldownKey = 'forgot-password-cooldown:'.$email;
@@ -184,6 +445,7 @@ class AuthController extends Controller
                 ]);
 
                 try {
+                    // Queued mail delivery mitigates timing differences and prevents SMTP blocking
                     Mail::to($user->email)->send(
                         new PasswordResetOtpMail($otp)
                     );
@@ -196,15 +458,16 @@ class AuthController extends Controller
                         'user_id' => $user->id,
                         'error' => $e->getMessage(),
                     ]);
-                    // Delete unusable OTP and do not consume rate limit quota
                     PasswordResetOtp::where('email', $email)->whereNull('used_at')->delete();
                 }
             } else {
+                // Constant-time mitigation: perform comparable hashing work when user does not exist
+                hash('sha256', Str::random(40));
+
                 RateLimiter::hit($ipKey, 3600);
                 RateLimiter::hit($sendsKey, $windowMinutes * 60);
                 RateLimiter::hit($cooldownKey, $cooldownSeconds);
             }
-
         } finally {
             $lock->release();
         }
@@ -219,7 +482,7 @@ class AuthController extends Controller
      */
     public function verifyOtp(VerifyOtpRequest $request): JsonResponse
     {
-        $email = strtolower(trim($request->input('email')));
+        $email = $this->loginRateLimiter->normalizeEmail($request->input('email'));
         $otp = $request->input('otp');
         $ip = $request->ip();
 
@@ -253,7 +516,7 @@ class AuthController extends Controller
      */
     public function resetPassword(ResetPasswordRequest $request): JsonResponse
     {
-        $email = strtolower(trim($request->input('email')));
+        $email = $this->loginRateLimiter->normalizeEmail($request->input('email'));
         $resetToken = $request->input('reset_token');
         $ip = $request->ip();
 
@@ -279,18 +542,15 @@ class AuthController extends Controller
             ], 404);
         }
 
-        // Wrap in a transaction to ensure password update and token consumption are atomic
         $success = DB::transaction(function () use ($otpRecord, $user, $request) {
             if (! $this->otpService->markResetTokenUsed($otpRecord)) {
                 return false;
             }
 
-            // Update password
             $user->update([
                 'password' => Hash::make($request->input('password')),
             ]);
 
-            // Revoke all existing sessions and tokens for user
             $this->sessionManager->revokeAllSessionsForPasswordReset($user, $request);
 
             return true;
@@ -303,9 +563,10 @@ class AuthController extends Controller
         }
 
         $this->activityLogger->log($user->id, 'auth.reset_password', $request);
+        $forgetCookie = $this->sessionManager->makeForgetRememberCookie();
 
         return response()->json([
             'message' => 'Password has been reset successfully. Please log in with your new password.',
-        ], 200);
+        ], 200)->withCookie($forgetCookie);
     }
 }

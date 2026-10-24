@@ -25,6 +25,15 @@ class LoginRequest extends FormRequest
             'email' => ['required', 'string', 'email'],
             'password' => ['required', 'string'],
             'device_name' => ['nullable', 'string', 'max:100'],
+            'remember' => ['nullable', 'boolean'],
         ];
+    }
+
+    /**
+     * Determine if the user requested a persistent Remember Me session.
+     */
+    public function wantsRemember(): bool
+    {
+        return $this->boolean('remember', false);
     }
 }

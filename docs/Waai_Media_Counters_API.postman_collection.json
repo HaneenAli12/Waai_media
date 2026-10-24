@@ -1,0 +1,2711 @@
+{
+    "info": {
+        "_postman_id": "c92fa3d7-4632-47d1-b582-7f289cfbf8e2",
+        "name": "Waai Media - Counters API",
+        "description": "Comprehensive Postman Collection for Waai Media Laravel Counters Module API.\n\n### Overview:\nThe Counters module manages exactly five fixed system metrics displayed across the public marketing website and editable via the authenticated Admin Dashboard:\n1. Clients Served (`clients_served`, Order: 1, Default: 15)\n2. Campaigns Launched (`campaigns_launched`, Order: 2, Default: 400)\n3. Social Content Published (`social_content_published`, Order: 3, Default: 2000)\n4. Industries Covered (`industries_covered`, Order: 4, Default: 18)\n5. Marketing Experts (`marketing_experts`, Order: 5, Default: 10)\n\n### Architectural & Security Rules:\n- Public endpoint (`GET /api/v1/counters`) is open without authentication.\n- Admin endpoints (`/api/v1/admin/counters`) require `Authorization: Bearer <token>` with `role: admin` or `editor`.\n- Bearer token must carry Sanctum `access` ability (`require.access` middleware). Remember tokens are rejected with 403 Forbidden.\n- Batch updates are atomic (`DB::transaction`). Any validation error causes complete rollback.\n- Partial updates are supported: unspecified counters remain unchanged.\n- Fixed system records: counters cannot be added, renamed, or deleted via API.\n\n### Variable Configuration:\n- `base_url`: Target API host (default `http://127.0.0.1:8000`).\n- `admin_token`: Bearer access token for an Admin user (e.g. `admin@waaimedia.com`).\n- `editor_token`: Bearer access token for an Editor user (e.g. `editor@waaimedia.com`).\n- `token`: Default token used across requests if specific role token is omitted.\n- `revoked_token`: An invalid, expired, or revoked token for testing 401 Unauthorized.\n- `disallowed_role_token`: A token lacking the `access` ability or having a disallowed role for testing 403 Forbidden.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://127.0.0.1:8000",
+            "type": "string"
+        },
+        {
+            "key": "token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "admin_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "editor_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "revoked_token",
+            "value": "invalid_or_revoked_token_placeholder",
+            "type": "string"
+        },
+        {
+            "key": "disallowed_role_token",
+            "value": "",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "1. Public API",
+            "item": [
+                {
+                    "name": "1.1 Public - Get All Counters",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "counters"
+                            ]
+                        },
+                        "description": "Public read-only endpoint returning all 5 predefined system counters in agreed display order. Does not require authentication."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"Response contains exactly 5 counters in 'data' array\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json).to.have.property('data');",
+                                    "    pm.expect(json.data).to.be.an('array');",
+                                    "    pm.expect(json.data.length).to.eql(5);",
+                                    "});",
+                                    "pm.test(\"Counters retain strict approved keys and display order (1 to 5)\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    const expectedOrder = [",
+                                    "        'clients_served',",
+                                    "        'campaigns_launched',",
+                                    "        'social_content_published',",
+                                    "        'industries_covered',",
+                                    "        'marketing_experts'",
+                                    "    ];",
+                                    "    json.data.forEach((counter, idx) => {",
+                                    "        pm.expect(counter.key).to.eql(expectedOrder[idx]);",
+                                    "        pm.expect(counter.order).to.eql(idx + 1);",
+                                    "    });",
+                                    "});",
+                                    "pm.test(\"Each counter has correct fields and types\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    json.data.forEach(counter => {",
+                                    "        pm.expect(counter).to.have.property('id').that.is.a('number');",
+                                    "        pm.expect(counter).to.have.property('key').that.is.a('string');",
+                                    "        pm.expect(counter).to.have.property('name').that.is.a('string');",
+                                    "        pm.expect(counter).to.have.property('value').that.is.a('number');",
+                                    "        pm.expect(counter).to.have.property('order').that.is.a('number');",
+                                    "        pm.expect(counter.value).to.be.at.least(0);",
+                                    "        pm.expect(Number.isInteger(counter.value)).to.be.true;",
+                                    "    });",
+                                    "});",
+                                    "pm.test(\"Does not expose sensitive or internal timestamp metadata\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    json.data.forEach(counter => {",
+                                    "        pm.expect(counter).to.not.have.property('created_at');",
+                                    "        pm.expect(counter).to.not.have.property('updated_at');",
+                                    "    });",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": [
+                        {
+                            "name": "200 OK - Public Counters",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"data\": [\n        {\n            \"id\": 1,\n            \"key\": \"clients_served\",\n            \"name\": \"Clients Served\",\n            \"value\": 15,\n            \"order\": 1\n        },\n        {\n            \"id\": 2,\n            \"key\": \"campaigns_launched\",\n            \"name\": \"Campaigns Launched\",\n            \"value\": 400,\n            \"order\": 2\n        },\n        {\n            \"id\": 3,\n            \"key\": \"social_content_published\",\n            \"name\": \"Social Content Published\",\n            \"value\": 2000,\n            \"order\": 3\n        },\n        {\n            \"id\": 4,\n            \"key\": \"industries_covered\",\n            \"name\": \"Industries Covered\",\n            \"value\": 18,\n            \"order\": 4\n        },\n        {\n            \"id\": 5,\n            \"key\": \"marketing_experts\",\n            \"name\": \"Marketing Experts\",\n            \"value\": 10,\n            \"order\": 5\n        }\n    ]\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "1.2 Public - Get Counters With Extraneous Query Params",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "counters"
+                            ]
+                        },
+                        "description": "Verifies that passing extraneous query parameters (e.g. ?page=1&sort=desc) does not alter the output or break the fixed ordering."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"Returns standard 5 counters regardless of query parameters\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.data.length).to.eql(5);",
+                                    "    pm.expect(json.data[0].key).to.eql('clients_served');",
+                                    "    pm.expect(json.data[4].key).to.eql('marketing_experts');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "2. Admin Dashboard API (Read)",
+            "item": [
+                {
+                    "name": "2.1 Admin - Get Counters as Admin",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Retrieves all 5 counters for dashboard management using an Admin token. Requires 'admin' or 'editor' role and Sanctum 'access' ability.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"Response contains 'data' array with 5 counters\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json).to.have.property('data');",
+                                    "    pm.expect(json.data).to.be.an('array');",
+                                    "    pm.expect(json.data.length).to.eql(5);",
+                                    "});",
+                                    "pm.test(\"All 5 predefined counters present in ascending order\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    for (let i = 0; i < 5; i++) {",
+                                    "        pm.expect(json.data[i].order).to.eql(i + 1);",
+                                    "    }",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": [
+                        {
+                            "name": "200 OK - Admin Counters",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"data\": [\n        {\n            \"id\": 1,\n            \"key\": \"clients_served\",\n            \"name\": \"Clients Served\",\n            \"value\": 15,\n            \"order\": 1\n        },\n        {\n            \"id\": 2,\n            \"key\": \"campaigns_launched\",\n            \"name\": \"Campaigns Launched\",\n            \"value\": 400,\n            \"order\": 2\n        },\n        {\n            \"id\": 3,\n            \"key\": \"social_content_published\",\n            \"name\": \"Social Content Published\",\n            \"value\": 2000,\n            \"order\": 3\n        },\n        {\n            \"id\": 4,\n            \"key\": \"industries_covered\",\n            \"name\": \"Industries Covered\",\n            \"value\": 18,\n            \"order\": 4\n        },\n        {\n            \"id\": 5,\n            \"key\": \"marketing_experts\",\n            \"name\": \"Marketing Experts\",\n            \"value\": 10,\n            \"order\": 5\n        }\n    ]\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "2.2 Admin - Get Counters as Editor",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Retrieves all 5 counters using an Editor token. Verifies that the 'editor' role is authorized to view dashboard counters.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{editor_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"Editor receives all 5 counters in order\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.data.length).to.eql(5);",
+                                    "    pm.expect(json.data[0].key).to.eql('clients_served');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "2.3 Admin - Get Counters (Token Expired or Revoked)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Tests that an expired, invalidated, or revoked Bearer token is rejected with 401 Unauthorized.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{revoked_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                                    "    pm.response.to.have.status(401);",
+                                    "});",
+                                    "pm.test(\"Response contains 'Unauthenticated.' message\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.message).to.eql('Unauthenticated.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": [
+                        {
+                            "name": "401 Unauthorized - Revoked Token",
+                            "status": "Unauthorized",
+                            "code": 401,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"message\": \"Unauthenticated.\"\n}"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "3. Positive Update Tests",
+            "item": [
+                {
+                    "name": "3.1 [MUTATES DATABASE] Batch Update Counters (Array Format)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "[MUTATES DATABASE] Atomically updates multiple counters using the standard array of objects format. Unspecified counters remain unchanged.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": 20\n        },\n        {\n            \"key\": \"campaigns_launched\",\n            \"value\": 450\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"Message confirms successful update\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.message).to.eql('Counters updated successfully.');",
+                                    "});",
+                                    "pm.test(\"Requested counters updated and unspecified counters preserved\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    const byKey = {};",
+                                    "    json.data.forEach(c => byKey[c.key] = c.value);",
+                                    "    pm.expect(byKey['clients_served']).to.eql(20);",
+                                    "    pm.expect(byKey['campaigns_launched']).to.eql(450);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": [
+                        {
+                            "name": "200 OK - Batch Update Success",
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"message\": \"Counters updated successfully.\",\n    \"data\": [\n        {\n            \"id\": 1,\n            \"key\": \"clients_served\",\n            \"name\": \"Clients Served\",\n            \"value\": 20,\n            \"order\": 1\n        },\n        {\n            \"id\": 2,\n            \"key\": \"campaigns_launched\",\n            \"name\": \"Campaigns Launched\",\n            \"value\": 450,\n            \"order\": 2\n        },\n        {\n            \"id\": 3,\n            \"key\": \"social_content_published\",\n            \"name\": \"Social Content Published\",\n            \"value\": 2000,\n            \"order\": 3\n        },\n        {\n            \"id\": 4,\n            \"key\": \"industries_covered\",\n            \"name\": \"Industries Covered\",\n            \"value\": 18,\n            \"order\": 4\n        },\n        {\n            \"id\": 5,\n            \"key\": \"marketing_experts\",\n            \"name\": \"Marketing Experts\",\n            \"value\": 10,\n            \"order\": 5\n        }\n    ]\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "3.2 [MUTATES DATABASE] Single Counter Update (PATCH)",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "[MUTATES DATABASE] Atomically updates a single counter via HTTP PATCH. Verifies route support for PATCH /api/v1/admin/counters.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": 25\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"clients_served updated to 25\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    const item = json.data.find(c => c.key === 'clients_served');",
+                                    "    pm.expect(item.value).to.eql(25);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "3.3 [MUTATES DATABASE] Batch Update Counters (Key-Value Dictionary Format)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "[MUTATES DATABASE] Tests input normalization in UpdateCountersRequest: converts key-value map into normalized array of items automatically.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": {\n        \"clients_served\": 30,\n        \"marketing_experts\": 12\n    }\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"Values updated correctly from dictionary payload\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    const cs = json.data.find(c => c.key === 'clients_served');",
+                                    "    const me = json.data.find(c => c.key === 'marketing_experts');",
+                                    "    pm.expect(cs.value).to.eql(30);",
+                                    "    pm.expect(me.value).to.eql(12);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "3.4 [MUTATES DATABASE] Update All 5 Counters Simultaneously",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "[MUTATES DATABASE] Tests updating all five counters together in one request (simulating the Angular dashboard Save action).",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": 18\n        },\n        {\n            \"key\": \"campaigns_launched\",\n            \"value\": 420\n        },\n        {\n            \"key\": \"social_content_published\",\n            \"value\": 2100\n        },\n        {\n            \"key\": \"industries_covered\",\n            \"value\": 22\n        },\n        {\n            \"key\": \"marketing_experts\",\n            \"value\": 12\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"All 5 counters reflect updated values\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    const byKey = {};",
+                                    "    json.data.forEach(c => byKey[c.key] = c.value);",
+                                    "    pm.expect(byKey['clients_served']).to.eql(18);",
+                                    "    pm.expect(byKey['campaigns_launched']).to.eql(420);",
+                                    "    pm.expect(byKey['social_content_published']).to.eql(2100);",
+                                    "    pm.expect(byKey['industries_covered']).to.eql(22);",
+                                    "    pm.expect(byKey['marketing_experts']).to.eql(12);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "3.5 [MUTATES DATABASE] Update Single Counter to Zero (Boundary Value: 0)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "[MUTATES DATABASE] Validates non-negative boundary integer: setting a counter value to 0 must be accepted without validation error.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": 0\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"Counter value successfully updated to 0\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    const item = json.data.find(c => c.key === 'clients_served');",
+                                    "    pm.expect(item.value).to.eql(0);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "3.6 [MUTATES DATABASE] Update With Identical Value (Idempotency)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "[MUTATES DATABASE] Submits the same value again. Verifies idempotent update without error or record alteration.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": 0\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"Counter value remains 0\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    const item = json.data.find(c => c.key === 'clients_served');",
+                                    "    pm.expect(item.value).to.eql(0);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "3.7 [MUTATES DATABASE] Editor Role - Update Counter",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "[MUTATES DATABASE] Verifies that an authenticated user with 'editor' role has authorized update permissions on /api/v1/admin/counters.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{editor_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"industries_covered\",\n            \"value\": 19\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"industries_covered updated to 19 by editor\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    const item = json.data.find(c => c.key === 'industries_covered');",
+                                    "    pm.expect(item.value).to.eql(19);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "3.8 [MUTATES DATABASE] Reset Counters to Approved Defaults",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "[MUTATES DATABASE] Utility request to restore the approved initial defaults (15, 400, 2000, 18, 10) after running testing mutations.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": 15\n        },\n        {\n            \"key\": \"campaigns_launched\",\n            \"value\": 400\n        },\n        {\n            \"key\": \"social_content_published\",\n            \"value\": 2000\n        },\n        {\n            \"key\": \"industries_covered\",\n            \"value\": 18\n        },\n        {\n            \"key\": \"marketing_experts\",\n            \"value\": 10\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"All 5 counters restored to initial defaults\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    const byKey = {};",
+                                    "    json.data.forEach(c => byKey[c.key] = c.value);",
+                                    "    pm.expect(byKey['clients_served']).to.eql(15);",
+                                    "    pm.expect(byKey['campaigns_launched']).to.eql(400);",
+                                    "    pm.expect(byKey['social_content_published']).to.eql(2000);",
+                                    "    pm.expect(byKey['industries_covered']).to.eql(18);",
+                                    "    pm.expect(byKey['marketing_experts']).to.eql(10);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "4. Validation and Negative Tests",
+            "item": [
+                {
+                    "name": "4.1 Validation - Negative Counter Value",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Validates rejection of negative integer. Rule: 'min:0'. Expected message: 'Counter values cannot be negative.'",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": -5\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 422 Unprocessable Entity\", function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Error message specifies value cannot be negative\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.errors).to.have.property('counters.0.value');",
+                                    "    pm.expect(json.message).to.eql('Counter values cannot be negative.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "4.2 Validation - String Value Instead of Integer",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Validates rejection of string values. Rule: 'integer'. Expected message: 'Counter values must be valid integers.'",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": \"twenty-five\"\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 422 Unprocessable Entity\", function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Error message specifies value must be an integer\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.errors).to.have.property('counters.0.value');",
+                                    "    pm.expect(json.message).to.eql('Counter values must be valid integers.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "4.3 Validation - Decimal Value",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Validates rejection of floating-point/decimal numbers. Rule: 'integer'.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": 15.75\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 422 Unprocessable Entity\", function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Rejects decimal value with integer constraint error\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.errors).to.have.property('counters.0.value');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "4.4 Validation - Null Value",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Validates rejection of null value. Rule: 'required|integer'.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": null\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 422 Unprocessable Entity\", function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Rejects null value\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.errors).to.have.property('counters.0.value');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "4.5 Validation - Missing Counters Field",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Validates rejection of request missing top-level 'counters' property. Rule: 'required'.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 422 Unprocessable Entity\", function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Error message specifies at least one counter update must be provided\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.errors).to.have.property('counters');",
+                                    "    pm.expect(json.message).to.eql('At least one counter update must be provided.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "4.6 Validation - Empty Counters Array",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Validates rejection of empty 'counters' array. Rule: 'min:1'.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": []\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 422 Unprocessable Entity\", function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Error message specifies min:1 required\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.errors).to.have.property('counters');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "4.7 Validation - Counters Field Set to Null",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Validates rejection when 'counters' field is null. Rule: 'required|array'.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": null\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 422 Unprocessable Entity\", function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Rejects null counters payload\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.errors).to.have.property('counters');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "4.8 Validation - Counters as Unsupported Data Type (String)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Validates rejection when 'counters' is supplied as string instead of array/object. Rule: 'array'.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": \"invalid_string_payload\"\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 422 Unprocessable Entity\", function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Error message specifies counters must be an array or object\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.errors).to.have.property('counters');",
+                                    "    pm.expect(json.message).to.eql('The counters payload must be an array or object.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "4.9 Validation - Missing Key and ID in Item",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Validates rejection when counter item is missing both 'key' and 'id'. Rule: 'required_without'.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"value\": 50\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 422 Unprocessable Entity\", function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Errors specify key or id required\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    const hasKeyOrId = json.errors.hasOwnProperty('counters.0.key') || json.errors.hasOwnProperty('counters.0.id');",
+                                    "    pm.expect(hasKeyOrId).to.be.true;",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "4.10 Validation - Missing Value in Item",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Validates rejection when item has 'key' but is missing 'value'. Rule: 'required'.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\"\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 422 Unprocessable Entity\", function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Error message specifies value is required\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.errors).to.have.property('counters.0.value');",
+                                    "    pm.expect(json.message).to.eql('A numerical value is required for each counter.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "4.11 Validation - Unknown Counter Key",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Validates rejection of unknown/non-predefined counter identifier. Rule: Rule::in($validKeys).",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"invalid_counter_identifier\",\n            \"value\": 10\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 422 Unprocessable Entity\", function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Error message specifies unknown counter identifier\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.errors).to.have.property('counters.0.key');",
+                                    "    pm.expect(json.message).to.eql('Unknown counter identifier provided. Predefined system counters cannot be added or renamed.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "4.12 Validation - Duplicate Keys in Same Batch",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Validates rejection of duplicate counter keys submitted in the same batch request. Rule: 'distinct'.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": 10\n        },\n        {\n            \"key\": \"clients_served\",\n            \"value\": 20\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 422 Unprocessable Entity\", function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Error message specifies duplicate counter identifier\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    const hasDistinctErr = json.errors.hasOwnProperty('counters.0.key') || json.errors.hasOwnProperty('counters.1.key');",
+                                    "    pm.expect(hasDistinctErr).to.be.true;",
+                                    "    pm.expect(json.message).to.eql('Duplicate counter identifier submitted in the batch request.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "4.13 Validation - Value Exceeding Maximum Limit (> 2147483647)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Validates rejection of value exceeding maximum 32-bit signed integer limit. Rule: 'max:2147483647'.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": 2147483648\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 422 Unprocessable Entity\", function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Error message specifies value exceeds maximum allowable range\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.errors).to.have.property('counters.0.value');",
+                                    "    pm.expect(json.message).to.eql('Counter value exceeds the maximum allowable integer range.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "4.14 Validation - Unexpected Extra Fields in Item",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Verifies that extraneous or unvalidated fields inside counter items are safely stripped by $request->validated() and do not corrupt the model.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": 15,\n            \"unexpected_extra_field\": \"injected_data\"\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"Extra field was stripped and not returned in resource response\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    const item = json.data.find(c => c.key === 'clients_served');",
+                                    "    pm.expect(item).to.not.have.property('unexpected_extra_field');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "4.15 Validation - Valid Item Followed by Invalid Item",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Tests that having one valid item does not permit an invalid item to pass. Expected: 422 validation error on second item.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": 50\n        },\n        {\n            \"key\": \"campaigns_launched\",\n            \"value\": -10\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 422 Unprocessable Entity\", function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Validation points to index 1 as invalid\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.errors).to.have.property('counters.1.value');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "4.16 Validation - Malformed JSON Payload",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Tests submitting malformed JSON syntax. Verifies the application returns 400 Bad Request or 422 Unprocessable Entity.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"counters\": [{\"key\": \"clients_served\", \"value\": 15}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 400 Bad Request or 422 Unprocessable Entity\", function () {",
+                                    "    pm.expect([400, 422]).to.include(pm.response.code);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "5. Authentication and Authorization",
+            "item": [
+                {
+                    "name": "5.1 Auth - Missing Bearer Token on Read",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Verifies that accessing protected admin read endpoint without an Authorization header returns 401 Unauthorized."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                                    "    pm.response.to.have.status(401);",
+                                    "});",
+                                    "pm.test(\"Response contains 'Unauthenticated.' message\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.message).to.eql('Unauthenticated.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "5.2 Auth - Missing Bearer Token on Update",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Verifies that attempting an update without an Authorization header is rejected with 401 Unauthorized.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": 20\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                                    "    pm.response.to.have.status(401);",
+                                    "});",
+                                    "pm.test(\"Response contains 'Unauthenticated.' message\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.message).to.eql('Unauthenticated.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "5.3 Auth - Invalid Malformed Bearer Token",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer malformed_invalid_token_xyz_123"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Verifies that presenting a syntactically invalid or forged Bearer token returns 401 Unauthorized."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                                    "    pm.response.to.have.status(401);",
+                                    "});",
+                                    "pm.test(\"Response contains 'Unauthenticated.' message\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.message).to.eql('Unauthenticated.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "5.4 Auth - Revoked or Expired Token",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Verifies that an expired or revoked Bearer token is rejected with 401 Unauthorized.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{revoked_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                                    "    pm.response.to.have.status(401);",
+                                    "});",
+                                    "pm.test(\"Response contains 'Unauthenticated.' message\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.message).to.eql('Unauthenticated.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "5.5 Auth - Remember Token Rejected on Access Route (403)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Tests Sanctum token ability separation: Ordinary protected API routes enforce the 'require.access' middleware. If a Remember Token (ability: ['remember']) is presented instead of an Access Token (ability: ['access']), it is strictly rejected with 403 Forbidden ('Forbidden. This endpoint requires an access token.').",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{disallowed_role_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 403 Forbidden\", function () {",
+                                    "    pm.response.to.have.status(403);",
+                                    "});",
+                                    "pm.test(\"Message explains access token ability is required\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.message).to.be.oneOf([",
+                                    "        'Forbidden. This endpoint requires an access token.',",
+                                    "        'Forbidden. Insufficient permissions.'",
+                                    "    ]);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "5.6 Auth - Disallowed Role Token (403)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Tests that an authenticated user who possesses neither 'admin' nor 'editor' role is rejected with 403 Forbidden.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{disallowed_role_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 403 Forbidden\", function () {",
+                                    "    pm.response.to.have.status(403);",
+                                    "});",
+                                    "pm.test(\"Message indicates forbidden access\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.message).to.be.oneOf([",
+                                    "        'Forbidden. Insufficient permissions.',",
+                                    "        'Unauthorized. Required role: admin,editor'",
+                                    "    ]);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "6. HTTP Method and Route Tests",
+            "item": [
+                {
+                    "name": "6.1 Method - POST on Public Counters Route",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "counters"
+                            ]
+                        },
+                        "description": "Public counters endpoint only registers GET. Sending POST must be rejected with 405 Method Not Allowed.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"test\": \"data\"\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 405 Method Not Allowed\", function () {",
+                                    "    pm.response.to.have.status(405);",
+                                    "});",
+                                    "pm.test(\"Message indicates method not allowed\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.message).to.eql('Method not allowed for this route.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "6.2 Method - POST on Admin Counters Route",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Admin counters route only supports GET, PUT, and PATCH. Sending POST must return 405 Method Not Allowed.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": 20\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 405 Method Not Allowed\", function () {",
+                                    "    pm.response.to.have.status(405);",
+                                    "});",
+                                    "pm.test(\"Message indicates method not allowed\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.message).to.eql('Method not allowed for this route.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "6.3 Method - DELETE on Admin Counters Route",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Predefined system counters cannot be deleted. Sending DELETE must return 405 Method Not Allowed.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 405 Method Not Allowed\", function () {",
+                                    "    pm.response.to.have.status(405);",
+                                    "});",
+                                    "pm.test(\"Message indicates method not allowed\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.message).to.eql('Method not allowed for this route.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "6.4 Route - Non-Existent Individual Counter Resource",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters",
+                                "1"
+                            ]
+                        },
+                        "description": "The API does not register individual resource routes like /counters/{id}. Must return 404 Not Found.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 404 Not Found\", function () {",
+                                    "    pm.response.to.have.status(404);",
+                                    "});",
+                                    "pm.test(\"Message indicates resource not found\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.message).to.eql('The requested resource was not found.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "7. Data Integrity and Atomicity",
+            "item": [
+                {
+                    "name": "7.1 Integrity - Verify Unspecified Counters Retained (Partial Update)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Submits an update for only 'clients_served'. Verifies that all other 4 counters retain their values without modification.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": 25\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"clients_served updated and other counters unchanged\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    const cs = json.data.find(c => c.key === 'clients_served');",
+                                    "    const cl = json.data.find(c => c.key === 'campaigns_launched');",
+                                    "    const sc = json.data.find(c => c.key === 'social_content_published');",
+                                    "    pm.expect(cs.value).to.eql(25);",
+                                    "    pm.expect(cl.value).to.eql(400);",
+                                    "    pm.expect(sc.value).to.eql(2000);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "7.2 Atomicity - Send Mixed Valid and Invalid Batch (Rollback Check)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Submits a batch containing one valid item (clients_served = 999) and one invalid item (campaigns_launched = -10). Must be rejected with 422.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counters\": [\n        {\n            \"key\": \"clients_served\",\n            \"value\": 999\n        },\n        {\n            \"key\": \"campaigns_launched\",\n            \"value\": -10\n        }\n    ]\n}"
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 422 Unprocessable Entity\", function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Error returned on invalid item\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.errors).to.have.property('counters.1.value');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "7.3 Atomicity - Verify Zero Partial Changes Persisted After 422",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "counters"
+                            ]
+                        },
+                        "description": "Checks database state after 7.2. Proves atomic rollback: clients_served must NOT have been saved as 999."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"clients_served was NOT partially saved as 999\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    const cs = json.data.find(c => c.key === 'clients_served');",
+                                    "    pm.expect(cs.value).to.not.eql(999);",
+                                    "    pm.expect(cs.value).to.eql(25);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "7.4 Integrity - Verify Total Counter Records Remained Exactly Five",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "counters"
+                            ]
+                        },
+                        "description": "Verifies that after all operations, the total number of counter records remains strictly five (no additions or deletions)."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"Exactly 5 records persisted in the database\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.data.length).to.eql(5);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "7.5 Integrity - Consistency Between Public and Admin GET Endpoints",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/counters",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "counters"
+                            ]
+                        },
+                        "description": "Verifies that the data returned by the Admin GET endpoint is perfectly consistent with the public GET endpoint.",
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{admin_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200 OK\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"Admin endpoint returns 5 items in identical order and structure\", function () {",
+                                    "    const json = pm.response.json();",
+                                    "    pm.expect(json.data.length).to.eql(5);",
+                                    "    pm.expect(json.data[0].order).to.eql(1);",
+                                    "    pm.expect(json.data[4].order).to.eql(5);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "response": []
+                }
+            ]
+        }
+    ]
+}
