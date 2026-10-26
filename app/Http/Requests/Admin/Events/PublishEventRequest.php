@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin\Events;
 
+use App\Http\Requests\Admin\Events\Concerns\RejectsCoverImageUrl;
 use App\Models\Event;
 use App\Services\Events\EventCoverImageService;
 use App\Services\Events\EventSlugService;
@@ -11,6 +12,8 @@ use Illuminate\Validation\Validator;
 
 class PublishEventRequest extends FormRequest
 {
+    use RejectsCoverImageUrl;
+
     /**
      * Determine if the user is authorized to make this request.
      * Both Administrator and Editor roles have event publishing privileges.
@@ -23,14 +26,23 @@ class PublishEventRequest extends FormRequest
     }
 
     /**
+     * Resolve the event targeted by the route, if any.
+     */
+    protected function routeEvent(): ?Event
+    {
+        $routeParam = $this->route('event') ?? $this->route('id');
+
+        return $routeParam instanceof Event
+            ? $routeParam
+            : (is_numeric($routeParam) ? Event::find((int) $routeParam) : null);
+    }
+
+    /**
      * Prepare data for validation by populating omitted fields from the existing event.
      */
     protected function prepareForValidation(): void
     {
-        $routeParam = $this->route('event') ?? $this->route('id');
-        $event = $routeParam instanceof Event
-            ? $routeParam
-            : (is_numeric($routeParam) ? Event::find((int) $routeParam) : null);
+        $event = $this->routeEvent();
 
         if ($event) {
             $toMerge = [];
@@ -43,7 +55,6 @@ class PublishEventRequest extends FormRequest
                 'place_ar',
                 'description_en',
                 'description_ar',
-                'cover_image_url',
                 'event_date',
                 'event_time',
                 'url',
@@ -73,7 +84,7 @@ class PublishEventRequest extends FormRequest
      * - Both categories (category_en, category_ar)
      * - Both places (place_en, place_ar)
      * - event_date
-     * - cover_image_url
+     * - a cover image (an already stored one, or a cover_image file uploaded with this request)
      *
      * Descriptions, event_time, and external url remain optional.
      *
@@ -88,35 +99,7 @@ class PublishEventRequest extends FormRequest
             'category_ar' => ['required', 'string', 'max:150'],
             'place_en' => ['required', 'string', 'max:255'],
             'place_ar' => ['required', 'string', 'max:255'],
-            'cover_image_url' => [
-                'required',
-                'string',
-                'max:500',
-                function (string $attribute, mixed $value, \Closure $fail): void {
-                    if (! is_string($value) || trim($value) === '') {
-                        $fail('A valid cover image is required for publication.');
-
-                        return;
-                    }
-
-                    $trimmed = trim($value);
-
-                    // 1. If it is an absolute URL, validate URL format
-                    if (Str::startsWith($trimmed, ['http://', 'https://'])) {
-                        if (! filter_var($trimmed, FILTER_VALIDATE_URL)) {
-                            $fail('The cover image URL must be a valid URL.');
-                        }
-
-                        return;
-                    }
-
-                    // 2. If it is an R2 storage key, validate through EventCoverImageService
-                    $imageService = app(EventCoverImageService::class);
-                    if (! $imageService->isR2Key($trimmed)) {
-                        $fail('The cover image must be a valid URL or a verified stored storage key.');
-                    }
-                },
-            ],
+            'cover_image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:10240'],
             'event_date' => ['required', 'date_format:Y-m-d'],
             'event_time' => ['required', 'date_format:H:i,H:i:s'],
             'description_en' => ['required', 'string'],
@@ -139,8 +122,9 @@ class PublishEventRequest extends FormRequest
             'category_ar.required' => 'The Arabic event category is required for publication.',
             'place_en.required' => 'The English event place/venue is required for publication.',
             'place_ar.required' => 'The Arabic event place/venue is required for publication.',
-            'cover_image_url.required' => 'A valid cover image URL is required for publication.',
-            'cover_image_url.url' => 'The cover image URL must be a valid URL.',
+            'cover_image.image' => 'The cover image must be a valid image file.',
+            'cover_image.mimes' => 'The cover image must be a file of type: jpeg, jpg, png, webp.',
+            'cover_image.max' => 'The cover image must not exceed 10 MB.',
             'event_date.required' => 'An event date is required for publication.',
             'event_date.date_format' => 'The event date must be in Y-m-d format (e.g. 2026-11-15).',
             'event_time.date_format' => 'The event time must be in H:i or H:i:s format (e.g. 14:30 or 14:30:00).',
@@ -149,11 +133,37 @@ class PublishEventRequest extends FormRequest
     }
 
     /**
+     * Publish readiness: the event must already have a stored cover (R2 key, or a legacy URL left
+     * untouched by earlier versions) or receive a cover_image file in this request.
+     */
+    protected function assertCoverImageReady(Validator $validator): void
+    {
+        if ($this->hasFile('cover_image')) {
+            return;
+        }
+
+        $stored = $this->routeEvent()?->cover_image_url;
+        $stored = is_string($stored) ? trim($stored) : '';
+
+        $isUsable = $stored !== '' && (
+            (Str::startsWith($stored, ['http://', 'https://']) && filter_var($stored, FILTER_VALIDATE_URL))
+            || app(EventCoverImageService::class)->isR2Key($stored)
+        );
+
+        if (! $isUsable) {
+            $validator->errors()->add('cover_image', 'A cover image is required for publication. Upload one using the cover_image field.');
+        }
+    }
+
+    /**
      * Validate whitespace on mandatory fields and ensure English title produces a valid slug.
      */
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $v) {
+            $this->rejectCoverImageUrl($v);
+            $this->assertCoverImageReady($v);
+
             $data = $v->getData();
 
             foreach (['name_en', 'name_ar', 'category_en', 'category_ar', 'place_en', 'place_ar', 'description_en', 'description_ar'] as $field) {

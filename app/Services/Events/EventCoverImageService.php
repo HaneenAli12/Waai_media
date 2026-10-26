@@ -6,6 +6,7 @@ use App\Services\Storage\ImageStorageService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class EventCoverImageService
@@ -13,6 +14,11 @@ class EventCoverImageService
     public const DIRECTORY = 'events/covers/';
 
     public const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+    /**
+     * Pattern locating an event cover key inside a stored value (a bare key or a URL that ends with one).
+     */
+    public const KEY_PATTERN = '#events/covers/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:jpg|jpeg|png|webp)#i';
 
     public function __construct(
         protected ImageStorageService $storageService
@@ -50,9 +56,9 @@ class EventCoverImageService
      * Resolve a stored cover_image_url value to a full public delivery URL.
      *
      * - Returns null for null/empty values.
-     * - Returns full HTTP(S) URLs unchanged.
+     * - Returns full HTTP(S) URLs unchanged (legacy records only; the API no longer accepts URLs as input).
      * - Resolves relative R2 storage keys belonging to events/covers/ using ImageStorageService / filesystem config.
-     * - Does not resolve relative keys belonging to other modules (returns unchanged).
+     * - Does not resolve relative keys belonging to other modules.
      */
     public function resolveUrl(?string $value): ?string
     {
@@ -67,7 +73,7 @@ class EventCoverImageService
         }
 
         if (! $this->isR2Key($trimmed)) {
-            // If it is not an absolute HTTP URL and not a valid R2 key, do not leak raw internal keys
+            // Not an absolute HTTP URL and not a valid R2 key: do not leak raw internal keys
             return null;
         }
 
@@ -97,6 +103,26 @@ class EventCoverImageService
     }
 
     /**
+     * Determine whether any event row still references the key, either as a bare key or inside a
+     * legacy URL value that ends with it. Optionally ignores one event.
+     */
+    public function isReferenced(string $key, ?int $ignoreEventId = null): bool
+    {
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $key);
+
+        $query = DB::table('event_calendar')->where(function ($q) use ($key, $escaped) {
+            $q->where('cover_image_url', $key)
+                ->orWhere('cover_image_url', 'LIKE', '%/'.$escaped);
+        });
+
+        if ($ignoreEventId !== null) {
+            $query->where('id', '!=', $ignoreEventId);
+        }
+
+        return $query->exists();
+    }
+
+    /**
      * Safely attempt to delete an unshared R2 object key.
      *
      * Will NOT delete:
@@ -110,13 +136,7 @@ class EventCoverImageService
             return false;
         }
 
-        // Check if any other event is still referencing this key
-        $query = DB::table('event_calendar')->where('cover_image_url', $key);
-        if ($ignoreEventId !== null) {
-            $query->where('id', '!=', $ignoreEventId);
-        }
-
-        if ($query->exists()) {
+        if ($this->isReferenced($key, $ignoreEventId)) {
             Log::info(sprintf(
                 "Skipping deletion of event cover image '%s' because it is referenced by another event record.",
                 $key
@@ -126,5 +146,32 @@ class EventCoverImageService
         }
 
         return $this->storageService->safeDelete($key);
+    }
+
+    /**
+     * List every object key directly under the event cover prefix (used by orphan cleanup).
+     *
+     * @return list<string>
+     */
+    public function allCoverKeys(): array
+    {
+        return Storage::disk('r2')->files(self::DIRECTORY);
+    }
+
+    /**
+     * Get the last modified timestamp of a stored cover object.
+     */
+    public function lastModified(string $key): int
+    {
+        return Storage::disk('r2')->lastModified($key);
+    }
+
+    /**
+     * Delete an exact cover key during orphan cleanup. Logs failures instead of throwing.
+     * Reference checks are the caller's responsibility.
+     */
+    public function safeDeleteKey(string $key): bool
+    {
+        return $this->isR2Key($key) && $this->storageService->safeDelete($key);
     }
 }

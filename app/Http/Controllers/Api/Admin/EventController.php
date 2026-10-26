@@ -159,10 +159,12 @@ class EventController extends Controller
             $validated['slug'] = $this->slugService->resolveSlugForUpdate($event, $newNameEn, true);
         }
 
-        $previousCoverImage = $event->cover_image_url;
+        $previousCoverImage = null;
 
         try {
-            DB::transaction(function () use ($event, $validated) {
+            DB::transaction(function () use ($event, $validated, &$previousCoverImage) {
+                // Read the current image under a row lock so concurrent replacements cannot orphan each other's object
+                $previousCoverImage = DB::table($event->getTable())->where('id', $event->id)->lockForUpdate()->value('cover_image_url');
                 $event->update($validated);
             });
         } catch (\Throwable $e) {
@@ -173,10 +175,8 @@ class EventController extends Controller
             throw $e;
         }
 
-        // Clean up previous image if a new image was uploaded or image replaced
-        if (array_key_exists('cover_image_url', $validated) && $previousCoverImage !== null && $previousCoverImage !== $validated['cover_image_url']) {
-            $this->coverImageService->deleteIfUnshared($previousCoverImage, $event->id);
-        }
+        // Remove the superseded image only after the replacement is persisted (and only if unshared)
+        $this->deleteSupersededCover($previousCoverImage, $uploadedKey, $event->id);
 
         $fresh = $event->fresh();
 
@@ -198,25 +198,47 @@ class EventController extends Controller
 
         unset($validated['id'], $validated['status'], $validated['published_at']);
 
-        DB::transaction(function () use ($event, $validated) {
-            $slug = $event->slug;
-            if ($slug === null) {
-                $nameEn = $validated['name_en'] ?? $event->name_en;
-                $slug = $this->slugService->generateSlug($nameEn, $event->id);
+        // An optional replacement file; otherwise the already stored cover satisfies publish readiness
+        $uploadedKey = null;
+        if ($request->hasFile('cover_image')) {
+            $uploadedKey = $this->coverImageService->upload($request->file('cover_image'));
+            $validated['cover_image_url'] = $uploadedKey;
+        }
+        unset($validated['cover_image']);
+
+        $previousCoverImage = null;
+
+        try {
+            DB::transaction(function () use ($event, $validated, &$previousCoverImage) {
+                $previousCoverImage = DB::table($event->getTable())->where('id', $event->id)->lockForUpdate()->value('cover_image_url');
+
+                $slug = $event->slug;
                 if ($slug === null) {
-                    throw new \RuntimeException('Failed to generate a valid slug before publishing.');
+                    $nameEn = $validated['name_en'] ?? $event->name_en;
+                    $slug = $this->slugService->generateSlug($nameEn, $event->id);
+                    if ($slug === null) {
+                        throw new \RuntimeException('Failed to generate a valid slug before publishing.');
+                    }
+                    $validated['slug'] = $slug;
                 }
-                $validated['slug'] = $slug;
+
+                $validated['status'] = Event::STATUS_PUBLISHED;
+
+                if ($event->published_at === null) {
+                    $validated['published_at'] = now();
+                }
+
+                $event->update($validated);
+            });
+        } catch (\Throwable $e) {
+            if ($uploadedKey !== null) {
+                $this->coverImageService->deleteIfUnshared($uploadedKey);
             }
 
-            $validated['status'] = Event::STATUS_PUBLISHED;
+            throw $e;
+        }
 
-            if ($event->published_at === null) {
-                $validated['published_at'] = now();
-            }
-
-            $event->update($validated);
-        });
+        $this->deleteSupersededCover($previousCoverImage, $uploadedKey, $event->id);
 
         $fresh = $event->fresh();
 
@@ -278,5 +300,18 @@ class EventController extends Controller
         return response()->json([
             'message' => 'Event permanently deleted successfully.',
         ], 200);
+    }
+
+    /**
+     * Delete the superseded cover object once a replacement has been persisted.
+     * Legacy external URLs and keys shared with other events are never deleted.
+     */
+    private function deleteSupersededCover(?string $previousKey, ?string $newKey, int $eventId): void
+    {
+        if ($newKey === null || $previousKey === null || $previousKey === $newKey) {
+            return;
+        }
+
+        $this->coverImageService->deleteIfUnshared($previousKey, $eventId);
     }
 }

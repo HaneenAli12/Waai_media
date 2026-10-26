@@ -221,15 +221,25 @@ php artisan music:clean-orphaned --force --grace-hours=48
 - **Grace Period (24 Hours):** Objects uploaded within the last 24 hours are skipped to avoid races with concurrent uploads.
 - **JIT Database Revalidation:** Re-checks database references immediately before deleting each candidate.
 - **Fail-Closed Behavior:** If the database or R2 listing fails, the command exits with code `1` and makes zero deletions.
-
+- **Timestamps:** Age comes from the R2 object's last-modified time. Missing, unreadable, zero or future timestamps keep the object.
+- **Empty-Reference Guard (single-record adaptation):** A destructive run aborts (exit `1`, zero deletions) when no track is recorded in the database but audio objects exist, which usually means the wrong or an empty database. Review with `--dry-run`, then pass `--allow-empty-references` if the deletion is genuinely intended (for example before the first track was ever activated).
+- **Max-Deletions Guard:** With a single active track a healthy week leaves only a handful of orphans, so the default cap is `--max-deletions=5`. If more objects are eligible, nothing is deleted (exit `1`).
+- **Overlap Protection:** An atomic cache lock (`music:clean-orphaned`) stops manual and scheduled runs from overlapping; the second run exits `1` without touching storage. The lock is released even after a failed run.
+- **Flags:** `--dry-run` takes precedence over `--force`; without `--force` the command is always a dry run.
 ### Scheduler Configuration
 In `routes/console.php`:
 ```php
-Schedule::command('music:clean-orphaned')
-    ->weeklyOn(1, '03:00') // Every Monday at 03:00 AM (runs in dry-run mode by default)
-    ->withoutOverlapping()
+Schedule::command('music:clean-orphaned --force --grace-hours=24 --max-deletions=5')
+    ->weeklyOn(1, '03:00') // Every Monday at 03:00 AM
+    ->withoutOverlapping(120)
     ->runInBackground();
 ```
+
+The weekly job deletes objects (`--force`). Prerequisites before relying on it in production:
+1. A cron entry running `php artisan schedule:run` every minute.
+2. A cache store that supports atomic locks (with `CACHE_STORE=database`, the `cache_locks` table must exist).
+3. Run `php artisan music:clean-orphaned --dry-run` once and review the candidates.
+4. Remember the grace period is the only protection for the window between an R2 upload and its database commit; keep it at 24 hours or more.
 
 ---
 
