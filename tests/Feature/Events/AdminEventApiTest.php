@@ -456,6 +456,45 @@ class AdminEventApiTest extends TestCase
         ]);
     }
 
+    public function test_admin_and_editor_can_unpublish_event_back_to_draft(): void
+    {
+        $event = Event::factory()->published()->create([
+            'slug' => 'published-event-to-draft',
+        ]);
+
+        // 1. Editor can unpublish
+        Sanctum::actingAs($this->editor, ['access']);
+        $response1 = $this->postJson("/api/v1/admin/events/{$event->id}/unpublish");
+
+        $response1->assertStatus(200)
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.published_at', null)
+            ->assertJsonPath('data.slug', 'published-event-to-draft');
+
+        $fresh = $event->fresh();
+        $this->assertSame('draft', $fresh->status);
+        $this->assertNull($fresh->published_at);
+        $this->assertSame('published-event-to-draft', $fresh->slug);
+
+        // 2. Event is now excluded from public index and detail
+        $this->getJson('/api/v1/events')->assertJsonCount(0, 'data');
+        $this->getJson("/api/v1/events/{$fresh->slug}")->assertStatus(404);
+
+        // 3. Admin can republish
+        Sanctum::actingAs($this->admin, ['access']);
+        $republishResponse = $this->postJson("/api/v1/admin/events/{$event->id}/publish");
+        $republishResponse->assertStatus(200)
+            ->assertJsonPath('data.status', 'published');
+
+        // 4. Admin can unpublish
+        $response2 = $this->patchJson("/api/v1/admin/events/{$event->id}/unpublish");
+        $response2->assertStatus(200)
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.published_at', null);
+
+        $this->assertSame('draft', $event->fresh()->status);
+    }
+
     public function test_admin_index_filters_by_search_category_status_and_timeline(): void
     {
         Event::factory()->draft()->create([

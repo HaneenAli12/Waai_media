@@ -36,4 +36,27 @@ class AdminSafetyService
             throw new AuthorizationException('Cannot delete or demote the last remaining active administrator.');
         }
     }
+
+    /**
+     * Guard against deleting the first administrator account ever created in the database.
+     * The first admin ever created is permanently protected from deletion.
+     *
+     * @throws AuthorizationException
+     */
+    public function ensureNotFirstAdmin(User $user): void
+    {
+        if ($user->isFirstAdminEverCreated()) {
+            throw new AuthorizationException('The first administrator account ever created in the database is protected and cannot be deleted.');
+        }
+    }
+
+    /**
+     * Alias for backward compatibility.
+     *
+     * @throws AuthorizationException
+     */
+    public function ensureNotOldestAdmin(User $user): void
+    {
+        $this->ensureNotFirstAdmin($user);
+    }
 }

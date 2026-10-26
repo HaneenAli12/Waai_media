@@ -1,0 +1,611 @@
+{
+    "info": {
+        "_postman_id": "c71a39f0-d5a2-4d1e-8e54-202610250001",
+        "name": "Waai Media - Event Calendar API",
+        "description": "Official Postman Collection (v2.1) for the Waai Media Event Calendar Module (Laravel 13 API Backend).\n\n### Authentication & Roles\n- **Public Endpoints**: No authentication required.\n- **Admin Endpoints**: Require Bearer token with 'access' ability (`admin` or `editor` role).\n- **Delete Endpoint**: Restricted strictly to `admin` role (returns HTTP 403 Forbidden for `editor`).\n\n### Date & Time Format\n- `event_date`: Strict `Y-m-d` format (e.g., `2026-11-20`).\n- `event_time`: Valid `H:i` or `H:i:s` format (e.g., `18:30` or `18:30:00`).\n\n### Cover Image Upload Contract\n- Supports multipart/form-data upload via `cover_image` (jpeg, jpg, png, webp, max 10MB).\n- Supports direct URL via `cover_image_url` (http/https URL or R2 storage key `events/covers/...`).\n\n### Collection Variables\n- `base_url`: Default `https://api.waaimedia.com`\n- `token`: Bearer access token for Admin or Editor\n- `event_id`: Persisted database ID\n- `slug`: Auto-generated or resolved event slug",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "https://api.waaimedia.com",
+            "type": "string"
+        },
+        {
+            "key": "token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "event_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "slug",
+            "value": "global-media-summit-2026-1",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "1. Public Events",
+            "description": "Public read-only endpoints accessible without authentication.",
+            "item": [
+                {
+                    "name": "1.1 List Published Events (Default 3 per page)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept-Language",
+                                "value": "en",
+                                "description": "Language negotiation (ar or en). Determines localized field resolution."
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/events?timeline=upcoming&page=1&per_page=3",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "events"
+                            ],
+                            "query": [
+                                {
+                                    "key": "timeline",
+                                    "value": "upcoming",
+                                    "description": "Timeline filter: upcoming (default), past, latest, all"
+                                },
+                                {
+                                    "key": "category",
+                                    "value": "Media",
+                                    "disabled": true,
+                                    "description": "Free-text category filter (matches category_en or category_ar)"
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "3",
+                                    "description": "Pagination limit (defaults to 3 for public website)"
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1",
+                                    "description": "Page number"
+                                }
+                            ]
+                        },
+                        "description": "Lists published events. Only events with status='published' and published_at <= now() are returned. Defaults to 3 events per page sorted chronologically for upcoming timeline."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "1.2 Get Published Event Details by Slug",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept-Language",
+                                "value": "en",
+                                "description": "Language negotiation (ar or en)"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/events/{{slug}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "events",
+                                "{{slug}}"
+                            ]
+                        },
+                        "description": "Retrieves a single published event by its unique immutable slug. Draft events or nonexistent slugs return HTTP 404 Not Found."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "2. Admin Events",
+            "description": "Administrative endpoints requiring Bearer token with access ability (admin or editor role).",
+            "item": [
+                {
+                    "name": "2.1 Admin - List Events (Default 10 per page)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/events?page=1&per_page=10",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "events"
+                            ],
+                            "query": [
+                                {
+                                    "key": "search",
+                                    "value": "media",
+                                    "disabled": true,
+                                    "description": "Search across name_en and name_ar"
+                                },
+                                {
+                                    "key": "category",
+                                    "value": "Media",
+                                    "disabled": true,
+                                    "description": "Filter by category (category_en or category_ar)"
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "draft",
+                                    "disabled": true,
+                                    "description": "Filter by status: draft or published"
+                                },
+                                {
+                                    "key": "timeline",
+                                    "value": "upcoming",
+                                    "disabled": true,
+                                    "description": "Filter by timeline: upcoming or past"
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "10",
+                                    "description": "Page size (defaults to 10 for admin dashboard, accepts 1-100)"
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1",
+                                    "description": "Page number"
+                                }
+                            ]
+                        },
+                        "description": "Lists all events (both draft and published) for Admin Dashboard table view with default 10 events per page."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2.2 Admin - Create Draft Event (Multipart with Image)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 201 Created', function () {",
+                                    "    pm.response.to.have.status(201);",
+                                    "});",
+                                    "",
+                                    "var jsonData = pm.response.json();",
+                                    "if (jsonData && jsonData.data) {",
+                                    "    if (jsonData.data.id) {",
+                                    "        pm.collectionVariables.set('event_id', jsonData.data.id.toString());",
+                                    "        console.log('Saved event_id: ' + jsonData.data.id);",
+                                    "    }",
+                                    "    if (jsonData.data.slug) {",
+                                    "        pm.collectionVariables.set('slug', jsonData.data.slug);",
+                                    "        console.log('Saved slug: ' + jsonData.data.slug);",
+                                    "    }",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "name_en",
+                                    "value": "Global Future Media Summit 2026",
+                                    "type": "text",
+                                    "description": "Required. English title must contain Latin alphanumeric characters."
+                                },
+                                {
+                                    "key": "name_ar",
+                                    "value": "القمة العالمية للإعلام المستقبلي 2026",
+                                    "type": "text",
+                                    "description": "Optional for draft."
+                                },
+                                {
+                                    "key": "category_en",
+                                    "value": "Media",
+                                    "type": "text",
+                                    "description": "Optional for draft."
+                                },
+                                {
+                                    "key": "category_ar",
+                                    "value": "الإعلام",
+                                    "type": "text",
+                                    "description": "Optional for draft."
+                                },
+                                {
+                                    "key": "place_en",
+                                    "value": "Riyadh International Convention Center",
+                                    "type": "text",
+                                    "description": "Optional for draft."
+                                },
+                                {
+                                    "key": "place_ar",
+                                    "value": "مركز الرياض الدولي للمعارض والمؤتمرات",
+                                    "type": "text",
+                                    "description": "Optional for draft."
+                                },
+                                {
+                                    "key": "description_en",
+                                    "value": "A premier gathering of media innovators and digital broadcast pioneers.",
+                                    "type": "text",
+                                    "description": "Optional for draft."
+                                },
+                                {
+                                    "key": "description_ar",
+                                    "value": "تجمع رائد لنخبة من مبتكري الإعلام ورواد البث الرقمي الحديث.",
+                                    "type": "text",
+                                    "description": "Optional for draft."
+                                },
+                                {
+                                    "key": "event_date",
+                                    "value": "2026-11-20",
+                                    "type": "text",
+                                    "description": "Format: Y-m-d (e.g. 2026-11-20)."
+                                },
+                                {
+                                    "key": "event_time",
+                                    "value": "18:30:00",
+                                    "type": "text",
+                                    "description": "Format: H:i or H:i:s (e.g. 18:30 or 18:30:00)."
+                                },
+                                {
+                                    "key": "url",
+                                    "value": "https://waaimedia.com/events/summit-2026",
+                                    "type": "text",
+                                    "description": "Optional external registration/info link."
+                                },
+                                {
+                                    "key": "cover_image",
+                                    "type": "file",
+                                    "src": "",
+                                    "description": "Multipart image file (jpeg, jpg, png, webp, max 10MB). Processed via EventCoverImageService."
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/events",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "events"
+                            ]
+                        },
+                        "description": "Creates a new event in Draft status using multipart/form-data with a file upload for cover_image. Automatically sets status='draft', published_at=null, derives unique slug ending in event ID, and saves event_id and slug to collection variables."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2.3 Admin - Create Draft Event (JSON Body)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 201 Created', function () {",
+                                    "    pm.response.to.have.status(201);",
+                                    "});",
+                                    "",
+                                    "var jsonData = pm.response.json();",
+                                    "if (jsonData && jsonData.data) {",
+                                    "    if (jsonData.data.id) {",
+                                    "        pm.collectionVariables.set('event_id', jsonData.data.id.toString());",
+                                    "    }",
+                                    "    if (jsonData.data.slug) {",
+                                    "        pm.collectionVariables.set('slug', jsonData.data.slug);",
+                                    "    }",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name_en\": \"Digital Journalism Conference 2026\",\n    \"name_ar\": \"مؤتمر الصحافة الرقمية 2026\",\n    \"category_en\": \"Journalism\",\n    \"category_ar\": \"صحافة\",\n    \"place_en\": \"King Fahd Cultural Centre\",\n    \"place_ar\": \"مركز الملك فهد الثقافي\",\n    \"description_en\": \"Exploring the next horizon of investigative and automated reporting.\",\n    \"description_ar\": \"استكشاف آفاق الصحافة الاستقصائية والأتمتة الرقمية.\",\n    \"event_date\": \"2026-12-05\",\n    \"event_time\": \"10:00:00\",\n    \"cover_image_url\": \"https://images.unsplash.com/photo-1540575467063-178a50c2df87\",\n    \"url\": \"https://waaimedia.com/events/journalism-2026\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/events",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "events"
+                            ]
+                        },
+                        "description": "Alternative draft creation using application/json when cover image is already hosted or referenced via cover_image_url."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2.4 Admin - Get Event Details",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/events/{{event_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "events",
+                                "{{event_id}}"
+                            ]
+                        },
+                        "description": "Retrieves the complete administrative view of an event by database ID (accessible by Admin or Editor)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2.5 Admin - Update Event (Partial / Full)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"place_en\": \"Riyadh Convention Hall - Main Auditorium\",\n    \"place_ar\": \"قاعة مؤتمرات الرياض - المسرح الرئيسي\",\n    \"event_date\": \"2026-11-20\",\n    \"event_time\": \"19:00:00\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/events/{{event_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "events",
+                                "{{event_id}}"
+                            ]
+                        },
+                        "description": "Partially or fully updates an existing event. Omitted fields are preserved. Server-controlled lifecycle fields (status, slug, published_at) are stripped. If published, mandatory fields cannot be cleared. Supports both PUT and PATCH."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2.6 Admin - Publish Event",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "var jsonData = pm.response.json();",
+                                    "if (jsonData && jsonData.data && jsonData.data.slug) {",
+                                    "    pm.collectionVariables.set('slug', jsonData.data.slug);",
+                                    "    console.log('Published event slug: ' + jsonData.data.slug);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/events/{{event_id}}/publish",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "events",
+                                "{{event_id}}",
+                                "publish"
+                            ]
+                        },
+                        "description": "Validates that all mandatory fields are present (name_en, name_ar, category_en, category_ar, place_en, place_ar, description_en, description_ar, event_date, event_time, cover_image_url) and transitions status to published. If already present on draft, an empty body '{}' is accepted. Supports both POST and PATCH."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2.7 Admin - Unpublish Event (Convert to Draft)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "var jsonData = pm.response.json();",
+                                    "pm.test('Event is in draft status', function () {",
+                                    "    pm.expect(jsonData.data.status).to.eql('draft');",
+                                    "    pm.expect(jsonData.data.published_at).to.be.null;",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/events/{{event_id}}/unpublish",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "events",
+                                "{{event_id}}",
+                                "unpublish"
+                            ]
+                        },
+                        "description": "Converts a published event back into a draft. Status becomes 'draft', published_at is set to null, and the slug remains permanently immutable. The event immediately ceases to appear in public API listings. Supports both POST and PATCH."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2.8 Admin - Delete Event (Administrator Only)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK on permanent deletion', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/events/{{event_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "events",
+                                "{{event_id}}"
+                            ]
+                        },
+                        "description": "Permanently hard-deletes an event from the database. Protected by dual-layer authorization: route middleware (role:admin) plus controller check ($user->isAdmin()). Returns HTTP 403 Forbidden for Editors."
+                    },
+                    "response": []
+                }
+            ]
+        }
+    ]
+}

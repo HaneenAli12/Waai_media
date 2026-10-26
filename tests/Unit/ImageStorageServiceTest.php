@@ -426,7 +426,7 @@ class ImageStorageServiceTest extends TestCase
 
         // Simulate database transaction failure
         try {
-            throw new \RuntimeException('Database constraint violation on news_articles table');
+            throw new \RuntimeException('Database constraint violation on entity table');
         } catch (\Throwable) {
             // Caller executes compensating cleanup
             $cleaned = $this->service->safeDelete($stored->key);

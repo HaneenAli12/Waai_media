@@ -22,6 +22,8 @@ class Music extends Model
         'file_url',
         'mime_type',
         'file_size',
+        'is_enabled',
+        'is_loop',
     ];
 
     /**
@@ -31,6 +33,8 @@ class Music extends Model
     {
         return [
             'file_size' => 'integer',
+            'is_enabled' => 'boolean',
+            'is_loop' => 'boolean',
         ];
     }
 
@@ -47,6 +51,8 @@ class Music extends Model
                 'file_url' => null,
                 'mime_type' => null,
                 'file_size' => null,
+                'is_enabled' => false,
+                'is_loop' => false,
             ]
         );
     }

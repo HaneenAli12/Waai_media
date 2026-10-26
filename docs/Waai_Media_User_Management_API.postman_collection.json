@@ -1,0 +1,767 @@
+{
+	"info": {
+		"_postman_id": "f5e9d2a4-7c31-4b82-9f61-2a1c873d9e01",
+		"name": "Waai Media - User Management API",
+		"description": "Comprehensive Postman Collection for the Waai Media Administrative User Management Module (Laravel 13 backend).\n\n### Overview:\nThe User Management module provides administration endpoints for listing, creating, inspecting, updating, changing roles, resetting passwords, and deleting user accounts.\n\n### Security & Business Constraints:\n1. **Admin Only**: All endpoints require a Bearer access token (`Authorization: Bearer <admin_token>`) belonging to an account with `role: admin` and the `access` ability.\n2. **Editor Forbidden**: Requests with an Editor token are rejected with `403 Forbidden`.\n3. **First Admin Protection**: The first admin ever created is permanently registered in `system_settings` and can never be deleted (`403 Forbidden`).\n4. **Last Active Admin Protection**: Demoting or deleting the last active admin is rejected with `403 Forbidden`.\n5. **Peer Admin Isolation**: An admin cannot update another admin's profile or reset another admin's password (`403 Forbidden`). Admins can update their own profile and editors' profiles.\n6. **Session Revocation**: Changing a user's role or resetting an editor's password automatically revokes all existing sessions/tokens for that user.\n\n### Variables:\n- `base_url`: Base API URL (e.g. `http://127.0.0.1:8000`).\n- `admin_token`: Sanctum access token for an Admin user.\n- `editor_token`: Sanctum access token for an Editor user (for negative testing).\n- `target_user_id`: ID of a user targeted for show, update, role change, password reset, or delete.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://127.0.0.1:8000",
+			"type": "string"
+		},
+		{
+			"key": "admin_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "editor_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "target_user_id",
+			"value": "2",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "1. User Listing & Details",
+			"item": [
+				{
+					"name": "1.1 List Users (Default)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Returns paginated user list\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('data');",
+									"    pm.expect(jsonData.data).to.be.an('array');",
+									"    pm.expect(jsonData).to.have.property('meta');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users"]
+						},
+						"description": "Lists dashboard users ordered by created_at desc."
+					}
+				},
+				{
+					"name": "1.2 List Users (Filter by Role - Editor)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"All returned users have role editor\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    jsonData.data.forEach(function(u) {",
+									"        pm.expect(u.role).to.eql('editor');",
+									"    });",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users?role=editor",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users"],
+							"query": [
+								{
+									"key": "role",
+									"value": "editor"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "1.3 List Users (Search by Name or Email)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users?search=waaimedia",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users"],
+							"query": [
+								{
+									"key": "search",
+									"value": "waaimedia"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "1.4 View User Details",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Contains user resource properties\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data).to.have.property('id');",
+									"    pm.expect(jsonData.data).to.have.property('name');",
+									"    pm.expect(jsonData.data).to.have.property('email');",
+									"    pm.expect(jsonData.data).to.have.property('role');",
+									"    pm.expect(jsonData.data).to.not.have.property('password');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users/{{target_user_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users", "{{target_user_id}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "2. User Creation",
+			"item": [
+				{
+					"name": "2.1 Create Editor Account (Success)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"var jsonData = pm.response.json();",
+									"if (jsonData.data && jsonData.data.id) {",
+									"    pm.environment.set(\"target_user_id\", jsonData.data.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Test Editor\",\n    \"email\": \"test.editor@waaimedia.com\",\n    \"password\": \"SecurePassword123!\",\n    \"role\": \"editor\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users"]
+						}
+					}
+				},
+				{
+					"name": "2.2 Create Admin Account (Success)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"pm.test(\"Created user has admin role\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.role).to.eql('admin');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Secondary Admin\",\n    \"email\": \"secondary.admin@waaimedia.com\",\n    \"password\": \"AdminSecure123!\",\n    \"role\": \"admin\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users"]
+						}
+					}
+				},
+				{
+					"name": "2.3 Create User - Validation Error (Duplicate Email)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 422\", function () {",
+									"    pm.response.to.have.status(422);",
+									"});",
+									"pm.test(\"Returns email validation error\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.errors).to.have.property('email');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Duplicate User\",\n    \"email\": \"test.editor@waaimedia.com\",\n    \"password\": \"SecurePassword123!\",\n    \"role\": \"editor\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "3. User Update & Role Modification",
+			"item": [
+				{
+					"name": "3.1 Update Editor Profile (Success)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Name was updated\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.name).to.eql('Test Editor Updated');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Test Editor Updated\",\n    \"email\": \"test.editor.updated@waaimedia.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users/{{target_user_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users", "{{target_user_id}}"]
+						}
+					}
+				},
+				{
+					"name": "3.2 Change User Role - Editor to Admin (Success)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Role changed to admin\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data.role).to.eql('admin');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"role\": \"admin\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users/{{target_user_id}}/role",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users", "{{target_user_id}}", "role"]
+						}
+					}
+				},
+				{
+					"name": "3.3 Change User Role - Admin to Editor (Demotion)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 or 403 (if last admin)\", function () {",
+									"    pm.expect([200, 403]).to.include(pm.response.code);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"role\": \"editor\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users/{{target_user_id}}/role",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users", "{{target_user_id}}", "role"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "4. Password Reset & Account Deletion",
+			"item": [
+				{
+					"name": "4.1 Admin Reset Editor Password (Success)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test(\"Returns success message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.message).to.eql('User password reset successfully.');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"password\": \"ResetPassword123!\",\n    \"password_confirmation\": \"ResetPassword123!\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users/{{target_user_id}}/password",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users", "{{target_user_id}}", "password"]
+						}
+					}
+				},
+				{
+					"name": "4.2 Delete User (Hard Delete)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 or 403 (if protected admin)\", function () {",
+									"    pm.expect([200, 403]).to.include(pm.response.code);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users/{{target_user_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users", "{{target_user_id}}"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "5. Authorization & Safety Guards (Negative Tests)",
+			"item": [
+				{
+					"name": "5.1 Unauthenticated Request (401)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 401\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users"]
+						}
+					}
+				},
+				{
+					"name": "5.2 Editor Forbidden from User Management (403)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 403\", function () {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{editor_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users"]
+						}
+					}
+				},
+				{
+					"name": "5.3 Admin Updating Another Admin (403)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 403\", function () {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Tampered Admin\",\n    \"email\": \"tampered.admin@waaimedia.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users/1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users", "1"]
+						},
+						"description": "Admins cannot modify profiles of other admins (Peer admin isolation)."
+					}
+				},
+				{
+					"name": "5.4 Admin Resetting Another Admin Password (403)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 403\", function () {",
+									"    pm.response.to.have.status(403);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"password\": \"AttemptReset123!\",\n    \"password_confirmation\": \"AttemptReset123!\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users/1/password",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users", "1", "password"]
+						},
+						"description": "Admins cannot reset passwords of other admins via users management."
+					}
+				},
+				{
+					"name": "5.5 Delete First Admin Ever Created (403)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 403\", function () {",
+									"    pm.response.to.have.status(403);",
+									"});",
+									"pm.test(\"Contains first admin protection message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.message).to.include('first administrator account ever created');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{admin_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/users/1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "users", "1"]
+						},
+						"description": "Guards against deleting the first admin ever created."
+					}
+				}
+			]
+		}
+	]
+}

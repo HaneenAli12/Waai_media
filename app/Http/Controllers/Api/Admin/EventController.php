@@ -226,6 +226,28 @@ class EventController extends Controller
     }
 
     /**
+     * Convert a published event back into a draft (unpublish).
+     *
+     * Accessible by authorized Admin and Editor roles.
+     * Transitions status from published to draft and clears published_at.
+     * The slug remains permanently assigned and immutable.
+     */
+    public function unpublish(Event $event): JsonResponse
+    {
+        DB::transaction(function () use ($event) {
+            $event->update([
+                'status' => Event::STATUS_DRAFT,
+                'published_at' => null,
+            ]);
+        });
+
+        return response()->json([
+            'message' => 'Event converted to draft successfully.',
+            'data' => new EventAdminResource($event->fresh()),
+        ], 200);
+    }
+
+    /**
      * Permanently delete an event.
      *
      * Accessible by Administrator ONLY. Editors are strictly forbidden (HTTP 403).

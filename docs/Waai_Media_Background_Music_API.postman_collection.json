@@ -1,0 +1,1363 @@
+{
+    "info": {
+        "_postman_id": "b3e9a712-4f81-4b72-8812-7f91a0c43912",
+        "name": "Waai Media - Background Music API",
+        "description": "Comprehensive, fully testable Postman Collection for the Waai Media Background Music Module API (Laravel 13 backend).\n\n### Overview:\nThe Background Music module manages public playback settings (`is_enabled`, `is_loop`, `audio_url`) and authenticated track uploads/replacements via Cloudflare R2 object storage.\n\n### Endpoints:\n- `GET /api/v1/background-music` (Public playback configuration, unauthenticated)\n- `GET /api/v1/admin/background-music` (Admin & Editor track & toggle inspector)\n- `PUT /api/v1/admin/background-music` (Admin & Editor toggle & track update/replacement)\n- `POST /api/v1/admin/background-music` (Alternative method for multipart form-data uploads)\n\n### Authorization Rules:\n- Public GET is unauthenticated.\n- Admin endpoints require `auth:sanctum`, `require.access`, and `role:admin,editor`.\n- `admin` and `editor` roles are authorized.\n- `viewer` and other unauthorized roles receive `403 Forbidden`.\n- Requests missing a Bearer token or presenting an invalid/revoked token receive `401 Unauthorized`.\n\n### Supported Audio Formats (Max 15 MiB):\n- Supports all genuine audio formats (MP3, WAV, OGG, M4A, AAC, FLAC, OPUS, AIFF, WMA, etc.) detected via content inspection.\n- Non-audio files disguised with an audio extension are strictly rejected with `422 Unprocessable Content`.\n- Files exceeding 15 MiB (15,360 KB) are strictly rejected with `422 Unprocessable Content`.\n\n### Postman Variables:\n- `base_url`: Target host (default: `http://127.0.0.1:8000`).\n- `admin_token`: Sanctum token with `role: admin` and `access` ability.\n- `editor_token`: Sanctum token with `role: editor` and `access` ability.\n- `token`: Shared active token (defaults to `{{admin_token}}`).\n- `viewer_token`: Sanctum token with `role: viewer` (tests 403 Forbidden).\n- `invalid_token`: Revoked or malformed token placeholder (tests 401 Unauthorized).",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://127.0.0.1:8000",
+            "type": "string"
+        },
+        {
+            "key": "token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "admin_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "editor_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "viewer_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "invalid_token",
+            "value": "invalid_or_revoked_token_placeholder",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "1. Public Playback API",
+            "item": [
+                {
+                    "name": "1.1 Public - Get Current Playback Settings (200 OK)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "background-music"]
+                        },
+                        "description": "Public endpoint to retrieve current background music settings for website visitors. Unauthenticated."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Response has data object', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res).to.have.property('data');",
+                                    "    pm.expect(res.data).to.be.an('object');",
+                                    "});",
+                                    "",
+                                    "pm.test('Contains only authorized public playback properties', function () {",
+                                    "    var data = pm.response.json().data;",
+                                    "    pm.expect(data).to.have.property('is_enabled');",
+                                    "    pm.expect(data).to.have.property('is_loop');",
+                                    "    pm.expect(data).to.have.property('audio_url');",
+                                    "    pm.expect(typeof data.is_enabled).to.eql('boolean');",
+                                    "    pm.expect(typeof data.is_loop).to.eql('boolean');",
+                                    "});",
+                                    "",
+                                    "pm.test('Sensitive storage keys and credentials are never exposed', function () {",
+                                    "    var data = pm.response.json().data;",
+                                    "    pm.expect(data).to.not.have.property('file_path');",
+                                    "    pm.expect(data).to.not.have.property('file_name');",
+                                    "    pm.expect(data).to.not.have.property('file_size');",
+                                    "    pm.expect(data).to.not.have.property('mime_type');",
+                                    "    pm.expect(data).to.not.have.property('id');",
+                                    "",
+                                    "    var rawBody = pm.response.text();",
+                                    "    pm.expect(rawBody).to.not.include('CLOUDFLARE_R2');",
+                                    "    pm.expect(rawBody).to.not.include('ACCESS_KEY');",
+                                    "    pm.expect(rawBody).to.not.include('SECRET');",
+                                    "    pm.expect(rawBody).to.not.include('music/audio/');",
+                                    "});",
+                                    "",
+                                    "pm.test('Audio URL is either null or a valid HTTP/HTTPS URL', function () {",
+                                    "    var audioUrl = pm.response.json().data.audio_url;",
+                                    "    if (audioUrl !== null) {",
+                                    "        pm.expect(audioUrl).to.match(/^https?:\\/\\//);",
+                                    "    }",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "1.2 Public - Reject POST on Public Endpoint (405 Method Not Allowed)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "background-music"]
+                        },
+                        "description": "Verifies that public endpoint only accepts GET/HEAD requests and rejects invalid HTTP mutation methods."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 405 Method Not Allowed', function () {",
+                                    "    pm.response.to.have.status(405);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "2. Admin Authentication & Role Authorization",
+            "item": [
+                {
+                    "name": "2.1 Admin - GET Settings (Admin Role - 200 OK)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Retrieves the full background music settings and track metadata for an authenticated Admin."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK for Admin', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Admin Resource schema is valid', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res).to.have.property('data');",
+                                    "    var data = res.data;",
+                                    "    pm.expect(data).to.have.property('id');",
+                                    "    pm.expect(data).to.have.property('has_track');",
+                                    "    pm.expect(data).to.have.property('file_name');",
+                                    "    pm.expect(data).to.have.property('file_url');",
+                                    "    pm.expect(data).to.have.property('file_size');",
+                                    "    pm.expect(data).to.have.property('mime_type');",
+                                    "    pm.expect(data).to.have.property('is_enabled');",
+                                    "    pm.expect(data).to.have.property('is_loop');",
+                                    "    pm.expect(data).to.have.property('updated_at');",
+                                    "    pm.expect(typeof data.has_track).to.eql('boolean');",
+                                    "    pm.expect(typeof data.is_enabled).to.eql('boolean');",
+                                    "    pm.expect(typeof data.is_loop).to.eql('boolean');",
+                                    "});",
+                                    "",
+                                    "pm.test('Zero credentials exposed in response body', function () {",
+                                    "    var raw = pm.response.text();",
+                                    "    pm.expect(raw).to.not.include('CLOUDFLARE_R2');",
+                                    "    pm.expect(raw).to.not.include('ACCESS_KEY');",
+                                    "    pm.expect(raw).to.not.include('SECRET');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "2.2 Admin - GET Settings (Editor Role - 200 OK)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{editor_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Verifies that an authenticated Editor also has authorized access to read background music settings."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK for Editor', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test('Editor receives valid data object', function () {",
+                                    "    pm.expect(pm.response.json()).to.have.property('data');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "2.3 Admin - GET Unauthenticated (401 Unauthorized)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Attempting to access admin settings without Authorization header must return 401 Unauthorized."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 401 Unauthorized', function () {",
+                                    "    pm.response.to.have.status(401);",
+                                    "});",
+                                    "pm.test('Returns Unauthenticated message', function () {",
+                                    "    pm.expect(pm.response.json().message).to.eql('Unauthenticated.');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "2.4 Admin - GET Invalid or Revoked Token (401 Unauthorized)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{invalid_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Presenting an invalid, malformed, or revoked token must return 401 Unauthorized."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 401 Unauthorized', function () {",
+                                    "    pm.response.to.have.status(401);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "2.5 Admin - GET Unauthorized Role (Viewer - 403 Forbidden)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{viewer_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Authenticated user lacking admin/editor role (e.g. viewer) must receive 403 Forbidden."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 403 Forbidden for unauthorized role', function () {",
+                                    "    pm.response.to.have.status(403);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "2.6 Admin - PUT Unauthenticated (401 Unauthorized)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "is_enabled",
+                                    "value": "true",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Unauthenticated update attempt must be rejected with 401 Unauthorized."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 401 Unauthorized', function () {",
+                                    "    pm.response.to.have.status(401);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "2.7 Admin - PUT Unauthorized Role (Viewer - 403 Forbidden)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{viewer_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "is_enabled",
+                                    "value": "true",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Mutation attempt by unauthorized role must be rejected with 403 Forbidden."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 403 Forbidden', function () {",
+                                    "    pm.response.to.have.status(403);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "3. Admin Settings Management (Without File)",
+            "item": [
+                {
+                    "name": "3.1 Admin - Update Toggles (Enable & Loop - 200 OK)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "is_enabled",
+                                    "value": "true",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "is_loop",
+                                    "value": "true",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Updates both is_enabled and is_loop to true without touching or requiring an audio file. Preserves existing track."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test('Toggles updated to true', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res.success).to.eql(true);",
+                                    "    pm.expect(res.data.is_enabled).to.eql(true);",
+                                    "    pm.expect(res.data.is_loop).to.eql(true);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "3.2 Admin - Update Toggles (Disable Playback Only - 200 OK)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "is_enabled",
+                                    "value": "false",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Updates only is_enabled to false. is_loop and existing track remain unchanged."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test('Playback disabled while loop retained', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res.data.is_enabled).to.eql(false);",
+                                    "    pm.expect(res.data.is_loop).to.eql(true);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "3.3 Admin - Update Toggles (Disable Loop Only - 200 OK)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "is_loop",
+                                    "value": "false",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Updates only is_loop to false. is_enabled and existing track remain unchanged."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test('Loop disabled', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res.data.is_loop).to.eql(false);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "3.4 Admin - Editor Role Can Update Settings (200 OK)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{editor_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "is_enabled",
+                                    "value": "true",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Confirms that an authenticated Editor has authorization to update background music settings."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK for Editor update', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test('Setting updated successfully by editor', function () {",
+                                    "    pm.expect(pm.response.json().data.is_enabled).to.eql(true);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "4. Admin Audio Upload & Safe Replacement",
+            "item": [
+                {
+                    "name": "4.1 Admin - Upload First Track (Valid MP3 - 200 OK)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "audio_file",
+                                    "type": "file",
+                                    "src": "",
+                                    "description": "Select a valid MP3 file (under 15 MiB). Supported MIME: audio/mpeg, audio/mp3."
+                                },
+                                {
+                                    "key": "is_enabled",
+                                    "value": "true",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "is_loop",
+                                    "value": "true",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Uploads an initial MP3 audio file to Cloudflare R2 storage, generates a UUID filename under music/audio/, and enables playback."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "var res = pm.response.json();",
+                                    "pm.test('Track successfully stored and metadata returned', function () {",
+                                    "    pm.expect(res.success).to.eql(true);",
+                                    "    pm.expect(res.data.has_track).to.eql(true);",
+                                    "    pm.expect(res.data.file_url).to.be.a('string');",
+                                    "    pm.expect(res.data.file_url).to.match(/^https?:\\/\\//);",
+                                    "    pm.expect(res.data.mime_type).to.include('audio');",
+                                    "});",
+                                    "",
+                                    "pm.test('R2 object URL stored as collection variable for replacement test', function () {",
+                                    "    if (res.data && res.data.file_url) {",
+                                    "        pm.collectionVariables.set('last_uploaded_track_url', res.data.file_url);",
+                                    "    }",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "4.2 Admin - Replace Audio Track (Valid WAV - 200 OK)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "audio_file",
+                                    "type": "file",
+                                    "src": "",
+                                    "description": "Select a valid WAV file (under 15 MiB). MIME: audio/wav, audio/x-wav."
+                                },
+                                {
+                                    "key": "is_enabled",
+                                    "value": "true",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "is_loop",
+                                    "value": "true",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Replaces the existing audio track with a WAV file. Safely supersedes previous track in R2 post-commit."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "var res = pm.response.json();",
+                                    "pm.test('New WAV track active', function () {",
+                                    "    pm.expect(res.data.has_track).to.eql(true);",
+                                    "    pm.expect(res.data.mime_type).to.include('wav');",
+                                    "});",
+                                    "",
+                                    "pm.test('Track URL changed from previous track', function () {",
+                                    "    var lastUrl = pm.collectionVariables.get('last_uploaded_track_url');",
+                                    "    if (lastUrl) {",
+                                    "        pm.expect(res.data.file_url).to.not.eql(lastUrl);",
+                                    "    }",
+                                    "    pm.collectionVariables.set('last_uploaded_track_url', res.data.file_url);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "4.3 Admin - Replace Audio Track (Valid OGG - 200 OK)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "audio_file",
+                                    "type": "file",
+                                    "src": "",
+                                    "description": "Select a valid OGG audio file. MIME: audio/ogg, application/ogg."
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Replaces current track with an OGG Vorbis audio file."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test('OGG MIME type accepted', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res.data.mime_type).to.include('ogg');",
+                                    "    pm.collectionVariables.set('last_uploaded_track_url', res.data.file_url);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "4.4 Admin - Replace Audio Track (Valid M4A - 200 OK)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "audio_file",
+                                    "type": "file",
+                                    "src": "",
+                                    "description": "Select a valid M4A container audio file. MIME: audio/x-m4a, audio/mp4."
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Replaces current track with an M4A audio file."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test('M4A container accepted', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res.data.mime_type).to.include('m4a');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "4.5 Admin - Replace Audio Track (Valid AAC - 200 OK)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "audio_file",
+                                    "type": "file",
+                                    "src": "",
+                                    "description": "Select a valid AAC audio file (.aac). MIME: audio/aac, audio/x-hx-aac-adts."
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Replaces current track with a standalone AAC audio file."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test('AAC audio format accepted', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res.data.has_track).to.eql(true);",
+                                    "    pm.expect(res.data.mime_type).to.include('aac');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "4.6 Admin - Replace Audio Track (Valid FLAC - 200 OK)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "audio_file",
+                                    "type": "file",
+                                    "src": "",
+                                    "description": "Select a valid FLAC audio file (.flac). MIME: audio/flac."
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Replaces current track with a FLAC lossless audio file."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test('FLAC audio format accepted', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res.data.has_track).to.eql(true);",
+                                    "    pm.expect(res.data.mime_type).to.include('flac');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "5. Validation & Rejection Scenarios",
+            "item": [
+                {
+                    "name": "5.1 Rejection - Fake Non-Audio File Renamed to Audio Extension (422 Unprocessable Content)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "audio_file",
+                                    "type": "file",
+                                    "src": "",
+                                    "description": "Select a plain text file, script, or image disguised with a .mp3 or .wav extension."
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Verifies that non-audio files renamed to audio extensions are strictly detected and rejected with 422 Unprocessable Content."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Content', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('Returns validation error for audio_file', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res).to.have.property('errors');",
+                                    "    pm.expect(res.errors).to.have.property('audio_file');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "5.2 Rejection - Oversized Audio File Exceeding 15 MiB (422 Unprocessable Content)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "audio_file",
+                                    "type": "file",
+                                    "src": "",
+                                    "description": "Select an audio file strictly exceeding 15 MiB (15,728,640 bytes)."
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Verifies that audio files exceeding 15 MiB (15,360 KB) are rejected by Laravel FormRequest validation."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Content', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('Error mentions file size limit', function () {",
+                                    "    var errors = pm.response.json().errors;",
+                                    "    pm.expect(errors).to.have.property('audio_file');",
+                                    "    pm.expect(errors.audio_file[0]).to.include('15 megabytes');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "5.3 Rejection - Unsupported File Extension or MIME (422 Unprocessable Content)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "audio_file",
+                                    "type": "file",
+                                    "src": "",
+                                    "description": "Select a non-audio file (e.g. document.pdf, image.png, script.txt)."
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Non-audio containers or unsupported MIME types are strictly rejected with 422."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Content', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('Error specifies format requirements', function () {",
+                                    "    var errors = pm.response.json().errors;",
+                                    "    pm.expect(errors).to.have.property('audio_file');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "5.4 Rejection - Invalid Boolean Values (422 Unprocessable Content)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "is_enabled",
+                                    "value": "not-a-boolean",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "is_loop",
+                                    "value": "invalid-toggle-value",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Passing non-boolean text strings (e.g. 'not-a-boolean', 'invalid-toggle-value', 'hello') into boolean switches is strictly rejected with 422 Unprocessable Content."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Content', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('Validation error returned for boolean fields', function () {",
+                                    "    var errors = pm.response.json().errors;",
+                                    "    pm.expect(errors).to.have.property('is_enabled');",
+                                    "    pm.expect(errors).to.have.property('is_loop');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "5.5 Rejection - Invalid Admin HTTP Method DELETE (405 Method Not Allowed)",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Direct deletion via DELETE is not permitted on the singleton music endpoint. Returns 405 Method Not Allowed."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 405 Method Not Allowed', function () {",
+                                    "    pm.response.to.have.status(405);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "6. Post-Upload State & Persistence Verification",
+            "item": [
+                {
+                    "name": "6.1 Admin - Verify Persisted Track After Replacement (200 OK)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Verifies that the most recently updated track metadata and delivery URL are consistently returned by subsequent GET requests."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "var res = pm.response.json();",
+                                    "pm.test('Active track verified', function () {",
+                                    "    pm.expect(res.data.has_track).to.eql(true);",
+                                    "    pm.expect(res.data.file_url).to.be.a('string');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "6.2 Public - Verify Public Playback URL Matches Active Track (200 OK)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "background-music"]
+                        },
+                        "description": "Verifies that the public playback endpoint serves the active track delivery URL corresponding to the admin setting."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "var data = pm.response.json().data;",
+                                    "pm.test('Public response reflects active track URL', function () {",
+                                    "    if (data.is_enabled) {",
+                                    "        pm.expect(data.audio_url).to.be.a('string');",
+                                    "        pm.expect(data.audio_url).to.match(/^https?:\\/\\//);",
+                                    "    }",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

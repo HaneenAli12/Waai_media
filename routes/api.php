@@ -1,9 +1,11 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\BackgroundMusicController as AdminBackgroundMusicController;
 use App\Http\Controllers\Api\Admin\EventController as AdminEventController;
-use App\Http\Controllers\Api\Admin\NewsController;
+use App\Http\Controllers\Api\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\AppLinkController;
 use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\BackgroundMusicController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ContactInfoController;
 use App\Http\Controllers\Api\CounterController;
@@ -49,25 +51,37 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'require.access', 'role:admi
     Route::get('/contact-info', [App\Http\Controllers\Api\Admin\ContactInfoController::class, 'show']);
     Route::put('/contact-info', [App\Http\Controllers\Api\Admin\ContactInfoController::class, 'update']);
 
-    // News Module Admin Endpoints
-    Route::get('/news', [NewsController::class, 'index']);
-    Route::post('/news', [NewsController::class, 'store']);
-    Route::get('/news/{news}', [NewsController::class, 'show']);
-    Route::match(['put', 'patch'], '/news/{news}', [NewsController::class, 'update']);
-    Route::match(['post', 'patch'], '/news/{news}/publish', [NewsController::class, 'publish']);
-    Route::match(['post', 'patch'], '/news/{news}/unpublish', [NewsController::class, 'unpublish']);
-    Route::delete('/news/{news}', [NewsController::class, 'destroy'])
-        ->middleware('role:admin');
-
     // Calendar Events Module Admin Endpoints
     Route::get('/events', [AdminEventController::class, 'index']);
     Route::post('/events', [AdminEventController::class, 'store']);
     Route::get('/events/{event}', [AdminEventController::class, 'show']);
     Route::match(['put', 'patch'], '/events/{event}', [AdminEventController::class, 'update']);
     Route::match(['post', 'patch'], '/events/{event}/publish', [AdminEventController::class, 'publish']);
+    Route::match(['post', 'patch'], '/events/{event}/unpublish', [AdminEventController::class, 'unpublish']);
     Route::delete('/events/{event}', [AdminEventController::class, 'destroy'])
         ->middleware('role:admin');
+    // Background Music Module Admin Endpoints
+    Route::get('/background-music', [AdminBackgroundMusicController::class, 'show']);
+    Route::match(['put', 'patch', 'post'], '/background-music', [AdminBackgroundMusicController::class, 'update']);
 });
+
+// =========================================================================
+// Users Management Admin Endpoints (Strictly Administrator Only)
+// =========================================================================
+Route::prefix('admin/users')->middleware(['auth:sanctum', 'require.access', 'role:admin'])->group(function () {
+    Route::get('/', [AdminUserController::class, 'index']);
+    Route::post('/', [AdminUserController::class, 'store']);
+    Route::get('/{user}', [AdminUserController::class, 'show']);
+    Route::match(['put', 'patch'], '/{user}', [AdminUserController::class, 'update']);
+    Route::patch('/{user}/role', [AdminUserController::class, 'updateRole']);
+    Route::patch('/{user}/password', [AdminUserController::class, 'resetPassword']);
+    Route::delete('/{user}', [AdminUserController::class, 'destroy']);
+});
+
+// =========================================================================
+// Background Music Public Endpoint
+// =========================================================================
+Route::get('/background-music', [BackgroundMusicController::class, 'show']);
 
 // =========================================================================
 // Contact Info Public Endpoint
