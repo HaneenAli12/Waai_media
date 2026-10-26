@@ -61,7 +61,7 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'require.access', 'role:supe
     Route::match(['post', 'patch'], '/events/{event}/publish', [AdminEventController::class, 'publish']);
     Route::match(['post', 'patch'], '/events/{event}/unpublish', [AdminEventController::class, 'unpublish']);
     Route::delete('/events/{event}', [AdminEventController::class, 'destroy'])
-        ->middleware('role:admin');
+        ->middleware('role:super_admin,admin');
     // Background Music Module Admin Endpoints
     Route::get('/background-music', [AdminBackgroundMusicController::class, 'show']);
     Route::match(['put', 'patch', 'post'], '/background-music', [AdminBackgroundMusicController::class, 'update']);
