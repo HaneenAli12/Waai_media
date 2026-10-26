@@ -62,6 +62,15 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'require.access', 'role:supe
     Route::match(['post', 'patch'], '/events/{event}/unpublish', [AdminEventController::class, 'unpublish']);
     Route::delete('/events/{event}', [AdminEventController::class, 'destroy'])
         ->middleware('role:super_admin,admin');
+
+    // Team Management Module Admin Endpoints (POST is accepted on update for multipart photo uploads)
+    Route::get('/team-members', [AdminTeamMemberController::class, 'index']);
+    Route::post('/team-members', [AdminTeamMemberController::class, 'store']);
+    Route::get('/team-members/{teamMember}', [AdminTeamMemberController::class, 'show']);
+    Route::match(['put', 'patch', 'post'], '/team-members/{teamMember}', [AdminTeamMemberController::class, 'update']);
+    Route::delete('/team-members/{teamMember}', [AdminTeamMemberController::class, 'destroy'])
+        ->middleware('role:super_admin,admin');
+
     // Background Music Module Admin Endpoints
     Route::get('/background-music', [AdminBackgroundMusicController::class, 'show']);
     Route::match(['put', 'patch', 'post'], '/background-music', [AdminBackgroundMusicController::class, 'update']);
