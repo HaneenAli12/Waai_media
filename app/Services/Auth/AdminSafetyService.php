@@ -12,41 +12,53 @@ class AdminSafetyService
      */
     public function canDeleteOrDemote(User $user, ?string $targetRole = null): bool
     {
-        if (! $user->isAdmin()) {
+        // 1. Designated protected super admin account cannot be deleted or demoted under any circumstances
+        if ($user->isProtectedSuperAdmin()) {
+            return false;
+        }
+
+        if (! $user->isAnyAdmin()) {
             return true;
         }
 
-        // If keeping as admin, it is safe
-        if ($targetRole === 'admin') {
+        // If keeping as regular admin or super admin, it is safe
+        if ($targetRole === 'admin' || $targetRole === 'super_admin') {
             return true;
         }
 
-        // Check if this is the last active admin
-        return ! $user->isLastActiveAdmin();
+        // Guard against leaving zero active admins in the system
+        return User::totalActiveAdminsCount() > 1;
     }
 
     /**
-     * Guard against deleting or demoting the last active administrator.
+     * Guard against deleting or demoting the last active administrator or the protected super admin.
      *
      * @throws AuthorizationException
      */
     public function ensureCanDeleteOrDemote(User $user, ?string $targetRole = null): void
     {
+        if ($user->isProtectedSuperAdmin()) {
+            throw new AuthorizationException('The designated Super Admin account is permanently protected and cannot be deleted or demoted.');
+        }
+
         if (! $this->canDeleteOrDemote($user, $targetRole)) {
             throw new AuthorizationException('Cannot delete or demote the last remaining active administrator.');
         }
     }
 
     /**
-     * Guard against deleting the first administrator account ever created in the database.
-     * The first admin ever created is permanently protected from deletion.
+     * Guard against deleting the protected Super Admin or first administrator account ever created in the database.
      *
      * @throws AuthorizationException
      */
     public function ensureNotFirstAdmin(User $user): void
     {
+        if ($user->isProtectedSuperAdmin()) {
+            throw new AuthorizationException('The designated Super Admin account is permanently protected and cannot be deleted.');
+        }
+
         if ($user->isFirstAdminEverCreated()) {
-            throw new AuthorizationException('The first administrator account ever created in the database is protected and cannot be deleted.');
+            throw new AuthorizationException('The designated Super Admin account is permanently protected and cannot be deleted.');
         }
     }
 

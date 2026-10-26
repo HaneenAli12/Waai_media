@@ -298,7 +298,10 @@ class SessionManager
             'reason' => $reason,
         ]);
 
-        app('auth')->forgetGuards();
+        // If the revoked user is the currently authenticated actor, forget auth guards so the current request terminates auth
+        if ($request && $request->user()?->id === $user->id) {
+            app('auth')->forgetGuards();
+        }
     }
 
     /**

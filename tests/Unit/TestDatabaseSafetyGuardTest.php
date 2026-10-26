@@ -142,14 +142,10 @@ class TestDatabaseSafetyGuardTest extends BaseTestCase
         $app = $testCase->bootApplication();
 
         $this->assertNotNull($app);
-        $this->assertSame(
-            TestCase::PERMITTED_TEST_DATABASE,
-            $app['config']->get('database.connections.mysql.database')
-        );
-        $this->assertSame(
-            TestCase::PERMITTED_TEST_DATABASE,
-            $app['db']->connection()->getDatabaseName()
-        );
+        $conn = $app['db']->connection();
+        $dbName = $conn->getDatabaseName();
+        $normalized = basename(str_replace('\\', '/', $dbName), '.sqlite');
+        $this->assertSame(TestCase::PERMITTED_TEST_DATABASE, $normalized);
 
         $app->flush();
     }

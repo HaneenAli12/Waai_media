@@ -102,7 +102,7 @@ class UserController extends Controller
     {
         $actor = $request->user();
 
-        if (! $actor || ! $actor->isAdmin()) {
+        if (! $actor || ! $actor->isAnyAdmin()) {
             return response()->json([
                 'message' => 'Forbidden. Only administrators can delete accounts.',
             ], 403);

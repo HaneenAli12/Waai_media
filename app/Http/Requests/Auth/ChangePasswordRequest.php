@@ -10,10 +10,13 @@ class ChangePasswordRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
+     * Editors are strictly forbidden from changing their password or editing account details.
      */
     public function authorize(): bool
     {
-        return ! is_null($this->user());
+        $user = $this->user();
+
+        return $user !== null && $user->isAnyAdmin();
     }
 
     /**

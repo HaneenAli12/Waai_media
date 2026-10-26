@@ -138,7 +138,7 @@ test('logout all devices revokes all sessions and all tokens for user', function
 });
 
 test('password change revokes other devices but preserves current device session', function () {
-    $user = User::factory()->create(['password' => 'OldPassword123!']);
+    $user = User::factory()->admin()->create(['password' => 'OldPassword123!']);
 
     // Device A (current)
     $loginA = $this->postJson('/api/v1/auth/login', [

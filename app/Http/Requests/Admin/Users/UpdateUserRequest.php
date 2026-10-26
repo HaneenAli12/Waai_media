@@ -11,16 +11,17 @@ class UpdateUserRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
-     * Rule:
-     * - Admin can update an Editor's profile.
-     * - Admin can update their OWN Admin profile.
-     * - Admin CANNOT update another Admin's profile.
+     * Rules:
+     * - Super Admin can edit regular Admins and Editors.
+     * - Regular Admin can edit Editors only.
+     * - Regular Admin cannot edit another Admin or the protected Super Admin.
+     * - Protected Super Admin's email cannot be changed through ordinary endpoints.
      */
     public function authorize(): bool
     {
         $actor = $this->user();
 
-        if (! $actor || ! $actor->isAdmin()) {
+        if (! $actor || ! $actor->isAnyAdmin()) {
             return false;
         }
 
@@ -34,9 +35,22 @@ class UpdateUserRequest extends FormRequest
             return true; // Let controller handle 404
         }
 
-        // If target is an admin, actor must be the target user themselves
-        if ($targetUser->isAdmin() && (int) $actor->id !== (int) $targetUser->id) {
-            return false;
+        // 1. Regular Admin: can only edit Editors.
+        if (! $actor->isSuperAdmin()) {
+            if ($targetUser->isProtectedSuperAdmin() || $targetUser->isSuperAdmin() || $targetUser->isAdmin()) {
+                return false;
+            }
+
+            return true;
+        }
+
+        // 2. Super Admin: can edit regular Admins and Editors.
+        // Protected account email cannot be changed through ordinary endpoints.
+        if ($targetUser->isProtectedSuperAdmin()) {
+            $newEmail = $this->input('email');
+            if ($newEmail !== null && strtolower(trim((string) $newEmail)) !== strtolower(User::DESIGNATED_SUPER_ADMIN_EMAIL)) {
+                return false;
+            }
         }
 
         return true;

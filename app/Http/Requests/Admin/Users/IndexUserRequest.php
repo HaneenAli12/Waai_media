@@ -13,7 +13,7 @@ class IndexUserRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user !== null && $user->isAdmin();
+        return $user !== null && $user->isAnyAdmin();
     }
 
     /**
@@ -26,7 +26,7 @@ class IndexUserRequest extends FormRequest
         return [
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
-            'role' => ['nullable', 'string', 'in:admin,editor'],
+            'role' => ['nullable', 'string', 'in:super_admin,admin,editor'],
             'search' => ['nullable', 'string', 'max:100'],
         ];
     }

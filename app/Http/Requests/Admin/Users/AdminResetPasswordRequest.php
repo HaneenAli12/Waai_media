@@ -10,16 +10,17 @@ class AdminResetPasswordRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
-     * Rule:
-     * - Admin can reset an Editor's password.
-     * - Admin CANNOT reset another Admin's password through Users Management.
-     * - Admin resetting their OWN password must use self-service /auth/change-password.
+     * Rules:
+     * - Super Admin can reset password of regular Admins and Editors.
+     * - Regular Admin can reset password of Editors only.
+     * - Regular Admin cannot reset password of another Admin or Super Admin.
+     * - Protected Super Admin password cannot be reset via ordinary admin endpoints.
      */
     public function authorize(): bool
     {
         $actor = $this->user();
 
-        if (! $actor || ! $actor->isAdmin()) {
+        if (! $actor || ! $actor->isAnyAdmin()) {
             return false;
         }
 
@@ -33,9 +34,16 @@ class AdminResetPasswordRequest extends FormRequest
             return true; // Let controller handle 404
         }
 
-        // An Admin cannot reset another Admin's password through Users Management
-        if ($targetUser->isAdmin()) {
+        // Cannot reset password of the protected Super Admin via ordinary user management
+        if ($targetUser->isProtectedSuperAdmin()) {
             return false;
+        }
+
+        // Regular admin can only reset password of Editors
+        if (! $actor->isSuperAdmin()) {
+            if ($targetUser->isSuperAdmin() || $targetUser->isAdmin()) {
+                return false;
+            }
         }
 
         return true;
