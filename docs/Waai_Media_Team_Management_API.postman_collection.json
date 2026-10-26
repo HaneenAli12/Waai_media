@@ -1,0 +1,1528 @@
+{
+    "info": {
+        "_postman_id": "b6d41a7e-2f3c-4c58-9e1a-202610270001",
+        "name": "Waai Media - Team Management API",
+        "description": "Postman Collection (v2.1) for the Waai Media Team Management module.\n\n### 1. Environment\nImport `docs/Waai_Media_Local.postman_environment.json` and select it. This collection reuses its variables: `base_url`, `admin_email`, `admin_password`, `editor_email`, `editor_password`, `admin_token`, `editor_token`. Nothing is hardcoded here.\n\n### 2. Get the two tokens\nThe Authentication collection stores its login token in its own collection variable `token`; it does NOT fill `admin_token` / `editor_token`, so copy them manually:\n1. Run `POST {{base_url}}/api/v1/auth/login` with `admin_email` / `admin_password` (body also needs `device_name`, e.g. `{{device_name}}`). Copy `token` from the response into the environment variable `admin_token`.\n2. Repeat with `editor_email` / `editor_password` and paste into `editor_token`.\n3. Access tokens expire (inactivity/expiry); on a 401 in any request, log in again and refresh the token.\n\n### 3. Roles\n- List, show, create, update: `admin` and `editor` (requests use `admin_token`).\n- Delete: `admin` only. Request 8 deliberately uses `editor_token` and must return 403.\n- Request 12 sends no token and must return 401.\n\n### 4. Photos and size limits\n- API rule: JPEG, PNG or WebP, max 5 MB (validated server-side, plus content inspection).\n- LOCAL PHP LIMIT: this machine's PHP has `upload_max_filesize=4M` (post_max_size=20M), so photos over 4 MB are rejected before the API validation runs. For reliable 5 MB uploads set `upload_max_filesize=6M` and `post_max_size=8M` or higher in php.ini and restart the server. Until then, test with images under 4 MB.\n- Select a local image in the `photo` field of request 1 and request 7. No other request needs a file.\n- Multipart requests must not have a manual Content-Type header; Postman adds the boundary.\n- Replacing a photo uses `POST` because PHP does not parse multipart bodies on PUT/PATCH.\n- Manual runs upload to and delete from the R2 bucket configured in the server `.env`; use a non-production bucket.\n\n### 5. Run order\nRun the folder top to bottom. Request 1 stores `team_member_id`, request 2 stores `team_member_no_photo_id`; request 14 cleans up the latter.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://127.0.0.1:8000",
+            "type": "string"
+        },
+        {
+            "key": "admin_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "editor_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "team_member_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "team_member_no_photo_id",
+            "value": "",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "Team Management",
+            "description": "CRUD for team members. Run in order.",
+            "item": [
+                {
+                    "name": "1. Create team member - with photo (multipart)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 201 Created', function () {",
+                                    "    pm.response.to.have.status(201);",
+                                    "});",
+                                    "var json = pm.response.json();",
+                                    "pm.test('Response has team member structure', function () {",
+                                    "    pm.expect(json.data).to.have.all.keys('id', 'name', 'position', 'photo_url', 'created_at', 'updated_at');",
+                                    "    pm.expect(json.data.name).to.eql('Sara Ahmed');",
+                                    "    pm.expect(json.data.position).to.eql('Editor in Chief');",
+                                    "});",
+                                    "pm.test('Photo URL is an https URL when a photo was selected', function () {",
+                                    "    if (json.data.photo_url !== null) { pm.expect(json.data.photo_url).to.match(/^https:\\/\\/.+\\/team\\/photos\\/.+\\.(jpg|png|webp)$/); }",
+                                    "});",
+                                    "pm.collectionVariables.set('team_member_id', String(json.data.id));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "name",
+                                    "value": "Sara Ahmed",
+                                    "type": "text",
+                                    "description": "Required. Max 255 chars."
+                                },
+                                {
+                                    "key": "position",
+                                    "value": "Editor in Chief",
+                                    "type": "text",
+                                    "description": "Required. Max 255 chars."
+                                },
+                                {
+                                    "key": "photo",
+                                    "type": "file",
+                                    "src": [],
+                                    "description": "Optional. JPEG, PNG or WebP. API max 5 MB; local PHP upload_max_filesize is 4M. Select a local file."
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/team-members",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "team-members"
+                            ]
+                        },
+                        "description": "Creates a team member with an optional profile photo. Send as multipart/form-data (do not set Content-Type manually).\n\nSelect a local JPEG/PNG/WebP file for the `photo` field (API max 5 MB; local PHP currently allows only 4 MB, see collection description). Saves `team_member_id` for the following requests."
+                    },
+                    "response": [
+                        {
+                            "name": "201 Created",
+                            "originalRequest": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "name",
+                                            "value": "Sara Ahmed",
+                                            "type": "text",
+                                            "description": "Required. Max 255 chars."
+                                        },
+                                        {
+                                            "key": "position",
+                                            "value": "Editor in Chief",
+                                            "type": "text",
+                                            "description": "Required. Max 255 chars."
+                                        },
+                                        {
+                                            "key": "photo",
+                                            "type": "file",
+                                            "src": [],
+                                            "description": "Optional. JPEG, PNG or WebP. API max 5 MB; local PHP upload_max_filesize is 4M. Select a local file."
+                                        }
+                                    ]
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/admin/team-members",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "admin",
+                                        "team-members"
+                                    ]
+                                },
+                                "description": "Creates a team member with an optional profile photo. Send as multipart/form-data (do not set Content-Type manually).\n\nSelect a local JPEG/PNG/WebP file for the `photo` field (API max 5 MB; local PHP currently allows only 4 MB, see collection description). Saves `team_member_id` for the following requests."
+                            },
+                            "status": "Created",
+                            "code": 201,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"data\": {\n        \"id\": 12,\n        \"name\": \"Sara Ahmed\",\n        \"position\": \"Editor in Chief\",\n        \"photo_url\": \"https://pub-example.r2.dev/team/photos/3f2b8c1e-5d4a-4e7b-9a60-1c2d3e4f5a6b.jpg\",\n        \"created_at\": \"2026-10-27T09:00:00.000000Z\",\n        \"updated_at\": \"2026-10-27T09:00:00.000000Z\"\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "2. Create team member - without photo",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 201 Created', function () {",
+                                    "    pm.response.to.have.status(201);",
+                                    "});",
+                                    "var json = pm.response.json();",
+                                    "pm.test('Member created with null photo_url', function () {",
+                                    "    pm.expect(json.data.name).to.eql('Omar Khalid');",
+                                    "    pm.expect(json.data.photo_url).to.eql(null);",
+                                    "});",
+                                    "pm.collectionVariables.set('team_member_no_photo_id', String(json.data.id));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Omar Khalid\",\n    \"position\": \"Cinematographer\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/team-members",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "team-members"
+                            ]
+                        },
+                        "description": "Creates a team member without a photo (photo is optional). `photo_url` is null. Saves `team_member_no_photo_id`."
+                    },
+                    "response": [
+                        {
+                            "name": "201 Created",
+                            "originalRequest": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"name\": \"Omar Khalid\",\n    \"position\": \"Cinematographer\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/admin/team-members",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "admin",
+                                        "team-members"
+                                    ]
+                                },
+                                "description": "Creates a team member without a photo (photo is optional). `photo_url` is null. Saves `team_member_no_photo_id`."
+                            },
+                            "status": "Created",
+                            "code": 201,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"data\": {\n        \"id\": 13,\n        \"name\": \"Omar Khalid\",\n        \"position\": \"Cinematographer\",\n        \"photo_url\": null,\n        \"created_at\": \"2026-10-27T09:00:00.000000Z\",\n        \"updated_at\": \"2026-10-27T09:00:00.000000Z\"\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "3. List team members - first page",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "var json = pm.response.json();",
+                                    "pm.test('Pagination structure is present', function () {",
+                                    "    pm.expect(json).to.have.keys('data', 'links', 'meta');",
+                                    "    pm.expect(json.meta.current_page).to.eql(1);",
+                                    "    pm.expect(json.meta).to.have.property('last_page');",
+                                    "    pm.expect(json.meta).to.have.property('total');",
+                                    "});",
+                                    "pm.test('Items have the team member shape', function () {",
+                                    "    pm.expect(json.data).to.be.an('array').that.is.not.empty;",
+                                    "    pm.expect(json.data[0]).to.have.all.keys('id', 'name', 'position', 'photo_url', 'created_at', 'updated_at');",
+                                    "});",
+                                    "pm.test('Newest member is first', function () {",
+                                    "    pm.expect(String(json.data[0].id)).to.eql(pm.collectionVariables.get('team_member_no_photo_id'));",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/team-members?page=1&per_page=1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "team-members"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "1"
+                                }
+                            ]
+                        },
+                        "description": "Page-number pagination, newest first (created_at desc, id desc), 10 per page by default. Use `per_page` (1-100) to change the size. Response includes `links` and `meta` for Previous / 1 / 2 / Next controls."
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "originalRequest": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/admin/team-members?page=1&per_page=1",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "admin",
+                                        "team-members"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "page",
+                                            "value": "1"
+                                        },
+                                        {
+                                            "key": "per_page",
+                                            "value": "1"
+                                        }
+                                    ]
+                                },
+                                "description": "Page-number pagination, newest first (created_at desc, id desc), 10 per page by default. Use `per_page` (1-100) to change the size. Response includes `links` and `meta` for Previous / 1 / 2 / Next controls."
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"data\": [\n        {\n            \"id\": 13,\n            \"name\": \"Omar Khalid\",\n            \"position\": \"Cinematographer\",\n            \"photo_url\": null,\n            \"created_at\": \"2026-10-27T09:00:00.000000Z\",\n            \"updated_at\": \"2026-10-27T09:00:00.000000Z\"\n        }\n    ],\n    \"links\": {\n        \"first\": \"{{base_url}}/api/v1/admin/team-members?page=1\",\n        \"last\": \"{{base_url}}/api/v1/admin/team-members?page=2\",\n        \"prev\": null,\n        \"next\": \"{{base_url}}/api/v1/admin/team-members?page=2\"\n    },\n    \"meta\": {\n        \"current_page\": 1,\n        \"from\": 1,\n        \"last_page\": 2,\n        \"path\": \"{{base_url}}/api/v1/admin/team-members\",\n        \"per_page\": 10,\n        \"to\": 1,\n        \"total\": 2\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "4. List team members - second page",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "var json = pm.response.json();",
+                                    "pm.test('Second page metadata', function () {",
+                                    "    pm.expect(json.meta.current_page).to.eql(2);",
+                                    "    pm.expect(json.data).to.be.an('array').with.lengthOf(1);",
+                                    "});",
+                                    "pm.test('Previous page link exists', function () {",
+                                    "    pm.expect(json.links.prev).to.be.a('string');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/team-members?page=2&per_page=1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "team-members"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "2"
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "1"
+                                }
+                            ]
+                        },
+                        "description": "Second page. With `per_page=1` this returns the older member created in request 1."
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "originalRequest": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/admin/team-members?page=2&per_page=1",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "admin",
+                                        "team-members"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "page",
+                                            "value": "2"
+                                        },
+                                        {
+                                            "key": "per_page",
+                                            "value": "1"
+                                        }
+                                    ]
+                                },
+                                "description": "Second page. With `per_page=1` this returns the older member created in request 1."
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"data\": [\n        {\n            \"id\": 13,\n            \"name\": \"Omar Khalid\",\n            \"position\": \"Cinematographer\",\n            \"photo_url\": null,\n            \"created_at\": \"2026-10-27T09:00:00.000000Z\",\n            \"updated_at\": \"2026-10-27T09:00:00.000000Z\"\n        }\n    ],\n    \"links\": {\n        \"first\": \"{{base_url}}/api/v1/admin/team-members?page=1\",\n        \"last\": \"{{base_url}}/api/v1/admin/team-members?page=2\",\n        \"prev\": \"{{base_url}}/api/v1/admin/team-members?page=1\",\n        \"next\": null\n    },\n    \"meta\": {\n        \"current_page\": 2,\n        \"from\": 2,\n        \"last_page\": 2,\n        \"path\": \"{{base_url}}/api/v1/admin/team-members\",\n        \"per_page\": 10,\n        \"to\": 2,\n        \"total\": 2\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "5. Show team member",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "var json = pm.response.json();",
+                                    "pm.test('Returns the requested member', function () {",
+                                    "    pm.expect(String(json.data.id)).to.eql(pm.collectionVariables.get('team_member_id'));",
+                                    "    pm.expect(json.data).to.have.all.keys('id', 'name', 'position', 'photo_url', 'created_at', 'updated_at');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/team-members/{{team_member_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "team-members",
+                                "{{team_member_id}}"
+                            ]
+                        },
+                        "description": "Retrieves one team member by ID (`team_member_id` collection variable)."
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "originalRequest": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/admin/team-members/{{team_member_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "admin",
+                                        "team-members",
+                                        "{{team_member_id}}"
+                                    ]
+                                },
+                                "description": "Retrieves one team member by ID (`team_member_id` collection variable)."
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"data\": {\n        \"id\": 12,\n        \"name\": \"Sara Ahmed\",\n        \"position\": \"Editor in Chief\",\n        \"photo_url\": \"https://pub-example.r2.dev/team/photos/3f2b8c1e-5d4a-4e7b-9a60-1c2d3e4f5a6b.jpg\",\n        \"created_at\": \"2026-10-27T09:00:00.000000Z\",\n        \"updated_at\": \"2026-10-27T09:00:00.000000Z\"\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "6. Update team member - name and position only",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "var json = pm.response.json();",
+                                    "pm.test('Name and position updated', function () {",
+                                    "    pm.expect(String(json.data.id)).to.eql(pm.collectionVariables.get('team_member_id'));",
+                                    "    pm.expect(json.data.name).to.eql('Sara Ahmed Al-Farsi');",
+                                    "    pm.expect(json.data.position).to.eql('Managing Editor');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Sara Ahmed Al-Farsi\",\n    \"position\": \"Managing Editor\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/team-members/{{team_member_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "team-members",
+                                "{{team_member_id}}"
+                            ]
+                        },
+                        "description": "Partial update (PATCH, JSON). Omitted fields and the existing photo are preserved. PUT is also accepted."
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "originalRequest": {
+                                "method": "PATCH",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"name\": \"Sara Ahmed Al-Farsi\",\n    \"position\": \"Managing Editor\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/admin/team-members/{{team_member_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "admin",
+                                        "team-members",
+                                        "{{team_member_id}}"
+                                    ]
+                                },
+                                "description": "Partial update (PATCH, JSON). Omitted fields and the existing photo are preserved. PUT is also accepted."
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"data\": {\n        \"id\": 12,\n        \"name\": \"Sara Ahmed Al-Farsi\",\n        \"position\": \"Managing Editor\",\n        \"photo_url\": \"https://pub-example.r2.dev/team/photos/3f2b8c1e-5d4a-4e7b-9a60-1c2d3e4f5a6b.jpg\",\n        \"created_at\": \"2026-10-27T09:00:00.000000Z\",\n        \"updated_at\": \"2026-10-27T09:00:00.000000Z\"\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "7. Update team member - with replacement photo (multipart)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "var json = pm.response.json();",
+                                    "pm.test('Member updated and photo URL returned', function () {",
+                                    "    pm.expect(String(json.data.id)).to.eql(pm.collectionVariables.get('team_member_id'));",
+                                    "    pm.expect(json.data.photo_url).to.be.a('string').and.match(/^https:\\/\\/.+\\/team\\/photos\\/.+/);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "name",
+                                    "value": "Sara Ahmed Al-Farsi",
+                                    "type": "text",
+                                    "description": "Optional."
+                                },
+                                {
+                                    "key": "photo",
+                                    "type": "file",
+                                    "src": [],
+                                    "description": "New profile photo. JPEG, PNG or WebP. API max 5 MB; local PHP upload_max_filesize is 4M. Select a local file."
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/team-members/{{team_member_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "team-members",
+                                "{{team_member_id}}"
+                            ]
+                        },
+                        "description": "Replaces the profile photo. File uploads require multipart, so this uses `POST` on the member URL (PHP does not parse multipart bodies on PATCH/PUT). The previous R2 object is deleted only after the new photo is saved; if anything fails the old photo is kept.\n\nSelect a local JPEG/PNG/WebP file (API max 5 MB; local PHP allows 4 MB)."
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "originalRequest": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "name",
+                                            "value": "Sara Ahmed Al-Farsi",
+                                            "type": "text",
+                                            "description": "Optional."
+                                        },
+                                        {
+                                            "key": "photo",
+                                            "type": "file",
+                                            "src": [],
+                                            "description": "New profile photo. JPEG, PNG or WebP. API max 5 MB; local PHP upload_max_filesize is 4M. Select a local file."
+                                        }
+                                    ]
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/admin/team-members/{{team_member_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "admin",
+                                        "team-members",
+                                        "{{team_member_id}}"
+                                    ]
+                                },
+                                "description": "Replaces the profile photo. File uploads require multipart, so this uses `POST` on the member URL (PHP does not parse multipart bodies on PATCH/PUT). The previous R2 object is deleted only after the new photo is saved; if anything fails the old photo is kept.\n\nSelect a local JPEG/PNG/WebP file (API max 5 MB; local PHP allows 4 MB)."
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"data\": {\n        \"id\": 12,\n        \"name\": \"Sara Ahmed Al-Farsi\",\n        \"position\": \"Managing Editor\",\n        \"photo_url\": \"https://pub-example.r2.dev/team/photos/9c1d7a42-0b3e-4f58-8a21-6d5e4c3b2a10.png\",\n        \"created_at\": \"2026-10-27T09:00:00.000000Z\",\n        \"updated_at\": \"2026-10-27T09:00:00.000000Z\"\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "8. Delete team member - unauthorized role (editor)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 403 Forbidden', function () {",
+                                    "    pm.response.to.have.status(403);",
+                                    "});",
+                                    "var json = pm.response.json();",
+                                    "pm.test('Forbidden message returned', function () {",
+                                    "    pm.expect(json.message).to.include('Forbidden');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{editor_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/team-members/{{team_member_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "team-members",
+                                "{{team_member_id}}"
+                            ]
+                        },
+                        "description": "Editors cannot delete team members. Expect 403 and the member is kept. Run before request 9."
+                    },
+                    "response": [
+                        {
+                            "name": "403 Forbidden",
+                            "originalRequest": {
+                                "method": "DELETE",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{editor_token}}"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/admin/team-members/{{team_member_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "admin",
+                                        "team-members",
+                                        "{{team_member_id}}"
+                                    ]
+                                },
+                                "description": "Editors cannot delete team members. Expect 403 and the member is kept. Run before request 9."
+                            },
+                            "status": "Forbidden",
+                            "code": 403,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"message\": \"Forbidden. Editors are strictly prohibited from performing delete operations.\"\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "9. Delete team member",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "var json = pm.response.json();",
+                                    "pm.test('Deletion confirmed', function () {",
+                                    "    pm.expect(json.message).to.eql('Team member deleted successfully.');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/team-members/{{team_member_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "team-members",
+                                "{{team_member_id}}"
+                            ]
+                        },
+                        "description": "Administrator only. Deletes the record and its R2 photo (storage failures are logged and never fail the request). A repeated DELETE returns the standard 404."
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "originalRequest": {
+                                "method": "DELETE",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/admin/team-members/{{team_member_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "admin",
+                                        "team-members",
+                                        "{{team_member_id}}"
+                                    ]
+                                },
+                                "description": "Administrator only. Deletes the record and its R2 photo (storage failures are logged and never fail the request). A repeated DELETE returns the standard 404."
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"message\": \"Team member deleted successfully.\"\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "10. Validation error - missing required fields",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Content', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "var json = pm.response.json();",
+                                    "pm.test('Errors listed for name and position', function () {",
+                                    "    pm.expect(json.errors).to.have.property('name');",
+                                    "    pm.expect(json.errors).to.have.property('position');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/team-members",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "team-members"
+                            ]
+                        },
+                        "description": "name and position are required."
+                    },
+                    "response": [
+                        {
+                            "name": "422 Unprocessable Content",
+                            "originalRequest": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/admin/team-members",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "admin",
+                                        "team-members"
+                                    ]
+                                },
+                                "description": "name and position are required."
+                            },
+                            "status": "Unprocessable Content",
+                            "code": 422,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"message\": \"The team member name is required.\",\n    \"errors\": {\n        \"name\": [\n            \"The team member name is required.\"\n        ],\n        \"position\": [\n            \"The team member position is required.\"\n        ]\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "11. Validation error - invalid photo",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Content', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "var json = pm.response.json();",
+                                    "pm.test('Photo error returned', function () {",
+                                    "    pm.expect(json.errors).to.have.property('photo');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "name",
+                                    "value": "Invalid Photo Test",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "position",
+                                    "value": "Tester",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "photo",
+                                    "value": "not-an-image",
+                                    "type": "text",
+                                    "description": "Not a valid image. Swap for a file (PDF / >5 MB) to test those cases."
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/team-members",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "team-members"
+                            ]
+                        },
+                        "description": "A non-image `photo` value is rejected. To test a real wrong file type or an oversized file, replace the text value with a local PDF or a file larger than 5 MB."
+                    },
+                    "response": [
+                        {
+                            "name": "422 Unprocessable Content",
+                            "originalRequest": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        {
+                                            "key": "name",
+                                            "value": "Invalid Photo Test",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "position",
+                                            "value": "Tester",
+                                            "type": "text"
+                                        },
+                                        {
+                                            "key": "photo",
+                                            "value": "not-an-image",
+                                            "type": "text",
+                                            "description": "Not a valid image. Swap for a file (PDF / >5 MB) to test those cases."
+                                        }
+                                    ]
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/admin/team-members",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "admin",
+                                        "team-members"
+                                    ]
+                                },
+                                "description": "A non-image `photo` value is rejected. To test a real wrong file type or an oversized file, replace the text value with a local PDF or a file larger than 5 MB."
+                            },
+                            "status": "Unprocessable Content",
+                            "code": 422,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"message\": \"The photo must be a valid image file.\",\n    \"errors\": {\n        \"photo\": [\n            \"The photo must be a valid image file.\"\n        ]\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "12. Unauthenticated request",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 401 Unauthorized', function () {",
+                                    "    pm.response.to.have.status(401);",
+                                    "});",
+                                    "pm.test('Unauthenticated message', function () {",
+                                    "    pm.expect(pm.response.json().message).to.eql('Unauthenticated.');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/team-members",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "team-members"
+                            ]
+                        },
+                        "description": "No Authorization header."
+                    },
+                    "response": [
+                        {
+                            "name": "401 Unauthorized",
+                            "originalRequest": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/admin/team-members",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "admin",
+                                        "team-members"
+                                    ]
+                                },
+                                "description": "No Authorization header."
+                            },
+                            "status": "Unauthorized",
+                            "code": 401,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"message\": \"Unauthenticated.\"\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "13. Not found",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 404 Not Found', function () {",
+                                    "    pm.response.to.have.status(404);",
+                                    "});",
+                                    "pm.test('Standard not found message', function () {",
+                                    "    pm.expect(pm.response.json().message).to.eql('The requested resource was not found.');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/team-members/999999999",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "team-members",
+                                "999999999"
+                            ]
+                        },
+                        "description": "A non-existent ID returns the standard 404."
+                    },
+                    "response": [
+                        {
+                            "name": "404 Not Found",
+                            "originalRequest": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/admin/team-members/999999999",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "admin",
+                                        "team-members",
+                                        "999999999"
+                                    ]
+                                },
+                                "description": "A non-existent ID returns the standard 404."
+                            },
+                            "status": "Not Found",
+                            "code": 404,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"message\": \"The requested resource was not found.\"\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "14. Cleanup - delete the member created without photo",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/team-members/{{team_member_no_photo_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "team-members",
+                                "{{team_member_no_photo_id}}"
+                            ]
+                        },
+                        "description": "Removes the member created by request 2 so repeated runs leave no data behind."
+                    },
+                    "response": [
+                        {
+                            "name": "200 OK",
+                            "originalRequest": {
+                                "method": "DELETE",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    },
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/admin/team-members/{{team_member_no_photo_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "admin",
+                                        "team-members",
+                                        "{{team_member_no_photo_id}}"
+                                    ]
+                                },
+                                "description": "Removes the member created by request 2 so repeated runs leave no data behind."
+                            },
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"message\": \"Team member deleted successfully.\"\n}"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

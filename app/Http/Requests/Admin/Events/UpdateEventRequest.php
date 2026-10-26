@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin\Events;
 
+use App\Http\Requests\Admin\Events\Concerns\RejectsCoverImageUrl;
 use App\Models\Event;
 use App\Services\Events\EventSlugService;
 use Illuminate\Foundation\Http\FormRequest;
@@ -9,6 +10,8 @@ use Illuminate\Validation\Validator;
 
 class UpdateEventRequest extends FormRequest
 {
+    use RejectsCoverImageUrl;
+
     /**
      * Determine if the user is authorized to make this request.
      * Both Administrator and Editor roles have update privileges.
@@ -38,10 +41,31 @@ class UpdateEventRequest extends FormRequest
             'place_ar' => ['nullable', 'string', 'max:255'],
             'url' => ['nullable', 'url', 'max:500'],
             'cover_image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:10240'],
-            'cover_image_url' => ['nullable', 'url', 'max:500'],
             'event_date' => ['nullable', 'date_format:Y-m-d'],
             'event_time' => ['nullable', 'date_format:H:i,H:i:s'],
         ];
+    }
+
+    /**
+     * Event fields an update request may change.
+     *
+     * @var list<string>
+     */
+    public const UPDATABLE_FIELDS = [
+        'name_en', 'name_ar', 'category_en', 'category_ar', 'description_en', 'description_ar',
+        'place_en', 'place_ar', 'url', 'cover_image', 'event_date', 'event_time',
+    ];
+
+    /**
+     * Resolve the event targeted by the route, if any.
+     */
+    protected function routeEvent(): ?Event
+    {
+        $routeParam = $this->route('event') ?? $this->route('id');
+
+        return $routeParam instanceof Event
+            ? $routeParam
+            : (is_numeric($routeParam) ? Event::find((int) $routeParam) : null);
     }
 
     /**
@@ -55,7 +79,6 @@ class UpdateEventRequest extends FormRequest
             'cover_image.image' => 'The cover image must be a valid image file.',
             'cover_image.mimes' => 'The cover image must be a file of type: jpeg, jpg, png, webp.',
             'cover_image.max' => 'The cover image must not exceed 10 MB.',
-            'cover_image_url.url' => 'The cover image URL must be a valid URL.',
             'url.url' => 'The external link must be a valid URL.',
             'event_date.date_format' => 'The event date must be in Y-m-d format (e.g. 2026-11-15).',
             'event_time.date_format' => 'The event time must be in H:i or H:i:s format (e.g. 14:30 or 14:30:00).',
@@ -68,7 +91,22 @@ class UpdateEventRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $v) {
+            $this->rejectCoverImageUrl($v);
+
             $data = $v->getData();
+
+            // Never report success for an empty update. PHP does not parse multipart/form-data bodies
+            // for real PATCH/PUT requests, so such requests arrive here with no fields at all.
+            if (! $this->hasAny(self::UPDATABLE_FIELDS) && ! $this->hasFile('cover_image')) {
+                $isUnparsedMultipart = str_starts_with(strtolower((string) $this->header('Content-Type')), 'multipart/form-data')
+                    && $this->getRealMethod() !== 'POST';
+
+                $v->errors()->add('request', $isUnparsedMultipart
+                    ? 'Multipart/form-data is not supported on PATCH or PUT. Send a POST request with _method=PATCH.'
+                    : 'No updatable fields were provided.');
+
+                return;
+            }
 
             if (array_key_exists('name_en', $data) || $this->has('name_en')) {
                 $nameEn = trim((string) ($data['name_en'] ?? $this->input('name_en')));
@@ -85,10 +123,7 @@ class UpdateEventRequest extends FormRequest
             }
 
             // If the event being updated is currently published, ensure an update cannot strip required fields
-            $routeParam = $this->route('event') ?? $this->route('id');
-            $event = $routeParam instanceof Event
-                ? $routeParam
-                : (is_numeric($routeParam) ? Event::find((int) $routeParam) : null);
+            $event = $this->routeEvent();
 
             if ($event && $event->status === Event::STATUS_PUBLISHED) {
                 $requiredForPublished = [
@@ -110,13 +145,6 @@ class UpdateEventRequest extends FormRequest
                         if ($val === null || (is_string($val) && trim($val) === '')) {
                             $v->errors()->add($field, "The {$label} cannot be cleared on a published event.");
                         }
-                    }
-                }
-
-                if (array_key_exists('cover_image_url', $data) && ! $this->hasFile('cover_image')) {
-                    $coverVal = $data['cover_image_url'];
-                    if ($coverVal === null || (is_string($coverVal) && trim($coverVal) === '')) {
-                        $v->errors()->add('cover_image_url', 'The cover image cannot be cleared on a published event.');
                     }
                 }
             }

@@ -2,12 +2,15 @@
 
 namespace App\Http\Requests\Admin\Events;
 
+use App\Http\Requests\Admin\Events\Concerns\RejectsCoverImageUrl;
 use App\Services\Events\EventSlugService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
 class StoreEventRequest extends FormRequest
 {
+    use RejectsCoverImageUrl;
+
     /**
      * Determine if the user is authorized to make this request.
      * Both Administrator and Editor roles have draft creation privileges.
@@ -39,7 +42,6 @@ class StoreEventRequest extends FormRequest
             'place_ar' => ['nullable', 'string', 'max:255'],
             'url' => ['nullable', 'url', 'max:500'],
             'cover_image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:10240'],
-            'cover_image_url' => ['nullable', 'url', 'max:500'],
             'event_date' => ['nullable', 'date_format:Y-m-d'],
             'event_time' => ['nullable', 'date_format:H:i,H:i:s'],
         ];
@@ -57,7 +59,6 @@ class StoreEventRequest extends FormRequest
             'cover_image.image' => 'The cover image must be a valid image file.',
             'cover_image.mimes' => 'The cover image must be a file of type: jpeg, jpg, png, webp.',
             'cover_image.max' => 'The cover image must not exceed 10 MB.',
-            'cover_image_url.url' => 'The cover image URL must be a valid URL.',
             'url.url' => 'The external link must be a valid URL.',
             'event_date.date_format' => 'The event date must be in Y-m-d format (e.g. 2026-11-15).',
             'event_time.date_format' => 'The event time must be in H:i or H:i:s format (e.g. 14:30 or 14:30:00).',
@@ -70,6 +71,8 @@ class StoreEventRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $v) {
+            $this->rejectCoverImageUrl($v);
+
             $data = $v->getData();
             $nameEn = trim((string) ($data['name_en'] ?? $this->input('name_en')));
 

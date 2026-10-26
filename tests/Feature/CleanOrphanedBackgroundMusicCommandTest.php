@@ -2,10 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Console\Commands\CleanOrphanedBackgroundMusicCommand;
 use App\Models\Music;
+use App\Services\Storage\AudioStorageService;
 use Carbon\Carbon;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -129,7 +132,7 @@ class CleanOrphanedBackgroundMusicCommandTest extends TestCase
         $music->save();
 
         $this->artisan('music:clean-orphaned', ['--force' => true])
-            ->expectsOutputToContain('Destructive cleanup complete. Deleted: 1, Failed: 0.')
+            ->expectsOutputToContain('Destructive cleanup complete. Deleted: 1, Failed: 0, Skipped on revalidation: 0.')
             ->assertExitCode(0);
 
         Storage::disk('r2')->assertExists($activeKey);
@@ -169,5 +172,200 @@ class CleanOrphanedBackgroundMusicCommandTest extends TestCase
 
         // Object must be completely preserved
         Storage::disk('r2')->assertExists($candidateKey);
+    }
+
+    private function putAudio(int $ageHours, string $ext = 'mp3'): string
+    {
+        $key = 'music/audio/'.Str::uuid().'.'.$ext;
+        Storage::disk('r2')->put($key, 'audio');
+        touch(Storage::disk('r2')->path($key), Carbon::now()->subHours($ageHours)->getTimestamp());
+
+        return $key;
+    }
+
+    private function activate(string $key): void
+    {
+        $music = Music::instance();
+        $music->file_path = $key;
+        $music->save();
+    }
+
+    public function test_dry_run_flag_takes_precedence_over_force(): void
+    {
+        $this->activate($this->putAudio(72));
+        $orphan = $this->putAudio(48);
+
+        $this->artisan('music:clean-orphaned', ['--force' => true, '--dry-run' => true])
+            ->expectsOutputToContain('DRY-RUN MODE ENABLED')
+            ->assertExitCode(0);
+
+        Storage::disk('r2')->assertExists($orphan);
+    }
+
+    public function test_empty_reference_aborts_destructive_run_unless_allowed(): void
+    {
+        // No active track recorded (e.g. wrong or fresh database) while audio objects exist
+        $orphan = $this->putAudio(48);
+
+        $this->artisan('music:clean-orphaned', ['--force' => true])
+            ->expectsOutputToContain('may indicate the wrong database')
+            ->assertExitCode(1);
+        Storage::disk('r2')->assertExists($orphan);
+
+        $this->artisan('music:clean-orphaned', ['--force' => true, '--allow-empty-references' => true])
+            ->assertExitCode(0);
+        Storage::disk('r2')->assertMissing($orphan);
+    }
+
+    public function test_empty_reference_does_not_block_dry_run(): void
+    {
+        $orphan = $this->putAudio(48);
+
+        $this->artisan('music:clean-orphaned')->assertExitCode(0);
+        Storage::disk('r2')->assertExists($orphan);
+    }
+
+    public function test_max_deletions_limit_aborts_without_deleting_anything(): void
+    {
+        $active = $this->putAudio(72);
+        $this->activate($active);
+        $orphans = [$this->putAudio(48), $this->putAudio(48, 'wav'), $this->putAudio(48, 'ogg')];
+
+        $this->artisan('music:clean-orphaned', ['--force' => true, '--max-deletions' => 2])
+            ->expectsOutputToContain('exceeds --max-deletions (2)')
+            ->assertExitCode(1);
+
+        Storage::disk('r2')->assertExists($active);
+        foreach ($orphans as $key) {
+            Storage::disk('r2')->assertExists($key);
+        }
+
+        $this->artisan('music:clean-orphaned', ['--force' => true, '--max-deletions' => 3])->assertExitCode(0);
+        foreach ($orphans as $key) {
+            Storage::disk('r2')->assertMissing($key);
+        }
+        Storage::disk('r2')->assertExists($active);
+    }
+
+    public function test_default_max_deletions_is_conservative_for_a_single_record_design(): void
+    {
+        $this->activate($this->putAudio(72));
+        $orphans = [];
+        for ($i = 0; $i < 6; $i++) {
+            $orphans[] = $this->putAudio(48);
+        }
+
+        $this->artisan('music:clean-orphaned', ['--force' => true])
+            ->expectsOutputToContain('exceeds --max-deletions (5)')
+            ->assertExitCode(1);
+
+        foreach ($orphans as $key) {
+            Storage::disk('r2')->assertExists($key);
+        }
+    }
+
+    public function test_missing_or_invalid_timestamps_keep_the_object(): void
+    {
+        $this->activate($this->putAudio(72));
+        $zero = 'music/audio/'.Str::uuid().'.mp3';
+        $future = 'music/audio/'.Str::uuid().'.mp3';
+        $unreadable = 'music/audio/'.Str::uuid().'.mp3';
+
+        $service = \Mockery::mock(AudioStorageService::class, ['r2'])->makePartial();
+        $service->shouldReceive('allAudioFiles')->andReturn([$zero, $future, $unreadable]);
+        $service->shouldReceive('lastModified')->with($zero)->andReturn(0);
+        $service->shouldReceive('lastModified')->with($future)->andReturn(Carbon::now()->addDays(2)->getTimestamp());
+        $service->shouldReceive('lastModified')->with($unreadable)->andThrow(new \RuntimeException('no timestamp'));
+        $service->shouldNotReceive('safeDelete');
+        $this->app->instance(AudioStorageService::class, $service);
+
+        $this->artisan('music:clean-orphaned', ['--force' => true])
+            ->expectsOutputToContain('Invalid Timestamp: 3')
+            ->assertExitCode(0);
+    }
+
+    public function test_storage_listing_failure_aborts_without_deleting(): void
+    {
+        $service = \Mockery::mock(AudioStorageService::class, ['r2'])->makePartial();
+        $service->shouldReceive('allAudioFiles')->andThrow(new \RuntimeException('r2 down'));
+        $service->shouldNotReceive('safeDelete');
+        $this->app->instance(AudioStorageService::class, $service);
+
+        $this->artisan('music:clean-orphaned', ['--force' => true])
+            ->expectsOutputToContain('Failed to list audio files')
+            ->assertExitCode(1);
+    }
+
+    public function test_deletion_failure_is_reported_with_failure_exit_code(): void
+    {
+        $this->activate($this->putAudio(72));
+        $orphan = $this->putAudio(48);
+
+        $service = \Mockery::mock(AudioStorageService::class, ['r2'])->makePartial();
+        $service->shouldReceive('safeDelete')->once()->with($orphan)->andReturn(false);
+        $this->app->instance(AudioStorageService::class, $service);
+
+        $this->artisan('music:clean-orphaned', ['--force' => true])
+            ->expectsOutputToContain('Deleted: 0, Failed: 1')
+            ->assertExitCode(1);
+    }
+
+    public function test_overlapping_runs_are_prevented_by_the_lock(): void
+    {
+        $this->activate($this->putAudio(72));
+        $orphan = $this->putAudio(48);
+
+        $lock = Cache::lock(CleanOrphanedBackgroundMusicCommand::LOCK_KEY, 60);
+        $this->assertTrue($lock->get());
+
+        $this->artisan('music:clean-orphaned', ['--force' => true])
+            ->expectsOutputToContain('already running')
+            ->assertExitCode(1);
+        Storage::disk('r2')->assertExists($orphan);
+
+        $lock->release();
+
+        $this->artisan('music:clean-orphaned', ['--force' => true])->assertExitCode(0);
+        Storage::disk('r2')->assertMissing($orphan);
+    }
+
+    public function test_lock_is_released_after_a_failed_run(): void
+    {
+        $service = \Mockery::mock(AudioStorageService::class, ['r2'])->makePartial();
+        $service->shouldReceive('allAudioFiles')->andThrow(new \RuntimeException('r2 down'));
+        $this->app->instance(AudioStorageService::class, $service);
+        $this->artisan('music:clean-orphaned', ['--force' => true])->assertExitCode(1);
+
+        $lock = Cache::lock(CleanOrphanedBackgroundMusicCommand::LOCK_KEY, 60);
+        $this->assertTrue($lock->get());
+        $lock->release();
+    }
+
+    public function test_repeated_execution_is_idempotent(): void
+    {
+        $this->activate($this->putAudio(72));
+        $orphan = $this->putAudio(48);
+
+        $this->artisan('music:clean-orphaned', ['--force' => true])->assertExitCode(0);
+        $this->artisan('music:clean-orphaned', ['--force' => true])
+            ->expectsOutputToContain('No orphaned audio files found eligible for cleanup.')
+            ->assertExitCode(0);
+
+        Storage::disk('r2')->assertMissing($orphan);
+    }
+
+    public function test_weekly_schedule_runs_destructively_with_conservative_limits(): void
+    {
+        $events = collect(app(Schedule::class)->events())
+            ->filter(fn ($event) => str_contains((string) $event->command, 'music:clean-orphaned'));
+
+        $this->assertCount(1, $events);
+        $event = $events->first();
+
+        $this->assertSame('0 3 * * 1', $event->expression);
+        $this->assertTrue($event->withoutOverlapping);
+        $this->assertStringContainsString('--force', $event->command);
+        $this->assertStringContainsString('--grace-hours=24', $event->command);
+        $this->assertStringContainsString('--max-deletions=5', $event->command);
     }
 }

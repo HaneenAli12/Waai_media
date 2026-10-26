@@ -131,7 +131,7 @@ class EventModelTest extends TestCase
 
     public function test_migration_file_exists_and_returns_anonymous_migration(): void
     {
-        $migrationFile = 'c:/Projects/Waai_media/database/migrations/2026_10_24_000001_create_events_table.php';
+        $migrationFile = dirname(__DIR__, 2).'/database/migrations/2026_10_24_000001_create_events_table.php';
         $this->assertFileExists($migrationFile);
 
         $migration = require $migrationFile;

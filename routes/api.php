@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Admin\BackgroundMusicController as AdminBackgroundMusicController;
 use App\Http\Controllers\Api\Admin\EventController as AdminEventController;
+use App\Http\Controllers\Api\Admin\TeamMemberController as AdminTeamMemberController;
 use App\Http\Controllers\Api\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\AppLinkController;
 use App\Http\Controllers\Api\Auth\AuthController;
@@ -55,11 +56,20 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'require.access', 'role:admi
     Route::get('/events', [AdminEventController::class, 'index']);
     Route::post('/events', [AdminEventController::class, 'store']);
     Route::get('/events/{event}', [AdminEventController::class, 'show']);
-    Route::match(['put', 'patch'], '/events/{event}', [AdminEventController::class, 'update']);
+    // POST is accepted for multipart updates (send _method=PATCH): PHP does not parse multipart bodies on real PATCH/PUT
+    Route::match(['put', 'patch', 'post'], '/events/{event}', [AdminEventController::class, 'update']);
     Route::match(['post', 'patch'], '/events/{event}/publish', [AdminEventController::class, 'publish']);
     Route::match(['post', 'patch'], '/events/{event}/unpublish', [AdminEventController::class, 'unpublish']);
     Route::delete('/events/{event}', [AdminEventController::class, 'destroy'])
         ->middleware('role:admin');
+    // Team Management Module Admin Endpoints (POST is accepted on update for multipart photo uploads)
+    Route::get('/team-members', [AdminTeamMemberController::class, 'index']);
+    Route::post('/team-members', [AdminTeamMemberController::class, 'store']);
+    Route::get('/team-members/{teamMember}', [AdminTeamMemberController::class, 'show']);
+    Route::match(['put', 'patch', 'post'], '/team-members/{teamMember}', [AdminTeamMemberController::class, 'update']);
+    Route::delete('/team-members/{teamMember}', [AdminTeamMemberController::class, 'destroy'])
+        ->middleware('role:admin');
+
     // Background Music Module Admin Endpoints
     Route::get('/background-music', [AdminBackgroundMusicController::class, 'show']);
     Route::match(['put', 'patch', 'post'], '/background-music', [AdminBackgroundMusicController::class, 'update']);

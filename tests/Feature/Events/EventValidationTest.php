@@ -365,13 +365,17 @@ class EventValidationTest extends TestCase
             'place_ar' => 'مدينة الإعلام',
             'event_date' => '2026-12-01',
             'event_time' => '10:00:00',
-            'cover_image_url' => 'https://media.waaimedia.com/events/covers/test.jpg',
             'description_en' => 'English description of minimal event',
             'description_ar' => 'وصف الفعالية باللغة العربية',
             'url' => null,
         ];
 
         $request = new PublishEventRequest;
+        // The event already has a stored cover, which satisfies publish readiness
+        $event = Event::factory()->make(['cover_image_url' => 'events/covers/11111111-2222-4333-8444-555555555555.jpg']);
+        $route = \Mockery::mock(Route::class);
+        $route->shouldReceive('parameter')->andReturnUsing(fn ($name) => $name === 'event' ? $event : null);
+        $request->setRouteResolver(fn () => $route);
         $validator = Validator::make($payload, $request->rules(), $request->messages());
         $request->withValidator($validator);
 

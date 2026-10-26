@@ -2,7 +2,7 @@
     "info": {
         "_postman_id": "c71a39f0-d5a2-4d1e-8e54-202610250001",
         "name": "Waai Media - Event Calendar API",
-        "description": "Official Postman Collection (v2.1) for the Waai Media Event Calendar Module (Laravel 13 API Backend).\n\n### Authentication & Roles\n- **Public Endpoints**: No authentication required.\n- **Admin Endpoints**: Require Bearer token with 'access' ability (`admin` or `editor` role).\n- **Delete Endpoint**: Restricted strictly to `admin` role (returns HTTP 403 Forbidden for `editor`).\n\n### Date & Time Format\n- `event_date`: Strict `Y-m-d` format (e.g., `2026-11-20`).\n- `event_time`: Valid `H:i` or `H:i:s` format (e.g., `18:30` or `18:30:00`).\n\n### Cover Image Upload Contract\n- Supports multipart/form-data upload via `cover_image` (jpeg, jpg, png, webp, max 10MB).\n- Supports direct URL via `cover_image_url` (http/https URL or R2 storage key `events/covers/...`).\n\n### Collection Variables\n- `base_url`: Default `https://api.waaimedia.com`\n- `token`: Bearer access token for Admin or Editor\n- `event_id`: Persisted database ID\n- `slug`: Auto-generated or resolved event slug",
+        "description": "Official Postman Collection (v2.1) for the Waai Media Event Calendar Module (Laravel 13 API Backend).\n\n### Authentication & Roles\n- **Public Endpoints**: No authentication required.\n- **Admin Endpoints**: Require Bearer token with 'access' ability (`admin` or `editor` role).\n- **Delete Endpoint**: Restricted strictly to `admin` role (returns HTTP 403 Forbidden for `editor`).\n\n### Date & Time Format\n- `event_date`: Strict `Y-m-d` format (e.g., `2026-11-20`).\n- `event_time`: Valid `H:i` or `H:i:s` format (e.g., `18:30` or `18:30:00`).\n\n### Cover Image Contract (file upload only)\n- Event images are accepted ONLY as an uploaded file in the multipart field `cover_image` (jpeg/jpg/png/webp, max 10MB) on create, update and publish. Files are stored in Cloudflare R2 and only the object key is persisted.\n- `cover_image_url` is a READ-ONLY, server-generated public URL in responses. Sending it in any create/update/publish request (even unchanged, even null) returns HTTP 422: `The cover_image_url field is read-only...`. React must strip it from edit-form payloads.\n- Omitting `cover_image` keeps the current image. A replacement deletes the previous R2 object only after the update is saved (and only if no other event shares it).\n- Publish readiness: the event must already have a stored cover or receive a `cover_image` file with the publish request.\n- Legacy events whose stored cover is an old external URL keep working untouched until an editor uploads a replacement file.\n\n### Multipart updates (React / file uploads)\nPHP does not parse multipart/form-data on real PATCH or PUT requests. To update with a file send `POST /api/v1/admin/events/{id}` as multipart/form-data with the field `_method=PATCH` (see 2.5a). JSON updates of non-file fields may keep using PATCH or PUT (see 2.5). An update with no fields returns 422.\nReact example: `const fd = new FormData(); fd.append('_method','PATCH'); fd.append('name_en', v); if (file) fd.append('cover_image', file); axios.post(`/api/v1/admin/events/${id}`, fd, { headers: { Authorization: `Bearer ${token}` } });` (do not set Content-Type manually, never append `cover_image_url`).\n\n### Collection Variables\n- `base_url`: Default `https://api.waaimedia.com`\n- `token`: Bearer access token for Admin or Editor\n- `event_id`: Persisted database ID\n- `slug`: Auto-generated or resolved event slug",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "variable": [
@@ -194,24 +194,19 @@
                         {
                             "listen": "test",
                             "script": {
+                                "type": "text/javascript",
                                 "exec": [
                                     "pm.test('Status code is 201 Created', function () {",
                                     "    pm.response.to.have.status(201);",
                                     "});",
-                                    "",
-                                    "var jsonData = pm.response.json();",
-                                    "if (jsonData && jsonData.data) {",
-                                    "    if (jsonData.data.id) {",
-                                    "        pm.collectionVariables.set('event_id', jsonData.data.id.toString());",
-                                    "        console.log('Saved event_id: ' + jsonData.data.id);",
-                                    "    }",
-                                    "    if (jsonData.data.slug) {",
-                                    "        pm.collectionVariables.set('slug', jsonData.data.slug);",
-                                    "        console.log('Saved slug: ' + jsonData.data.slug);",
-                                    "    }",
-                                    "}"
-                                ],
-                                "type": "text/javascript"
+                                    "var json = pm.response.json();",
+                                    "pm.test('cover_image_url is a generated read-only public URL (or null without a file)', function () {",
+                                    "    pm.expect(json.data).to.have.property('cover_image_url');",
+                                    "    if (json.data.cover_image_url !== null) { pm.expect(json.data.cover_image_url).to.match(/^https:\\/\\/.+\\/events\\/covers\\/.+\\.(jpg|jpeg|png|webp)$/); }",
+                                    "});",
+                                    "if (json && json.data && json.data.id) { pm.collectionVariables.set('event_id', json.data.id.toString()); }",
+                                    "if (json && json.data && json.data.slug) { pm.collectionVariables.set('slug', json.data.slug); }"
+                                ]
                             }
                         }
                     ],
@@ -316,7 +311,7 @@
                                 "events"
                             ]
                         },
-                        "description": "Creates a new event in Draft status using multipart/form-data with a file upload for cover_image. Automatically sets status='draft', published_at=null, derives unique slug ending in event ID, and saves event_id and slug to collection variables."
+                        "description": "Creates a draft with multipart/form-data. Select a local image in `cover_image` (jpeg/png/webp, under your PHP upload_max_filesize). The image is stored in R2; the response returns the generated public `cover_image_url`. Do not set Content-Type manually. Saves event_id and slug."
                     },
                     "response": []
                 },
@@ -363,7 +358,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"name_en\": \"Digital Journalism Conference 2026\",\n    \"name_ar\": \"مؤتمر الصحافة الرقمية 2026\",\n    \"category_en\": \"Journalism\",\n    \"category_ar\": \"صحافة\",\n    \"place_en\": \"King Fahd Cultural Centre\",\n    \"place_ar\": \"مركز الملك فهد الثقافي\",\n    \"description_en\": \"Exploring the next horizon of investigative and automated reporting.\",\n    \"description_ar\": \"استكشاف آفاق الصحافة الاستقصائية والأتمتة الرقمية.\",\n    \"event_date\": \"2026-12-05\",\n    \"event_time\": \"10:00:00\",\n    \"cover_image_url\": \"https://images.unsplash.com/photo-1540575467063-178a50c2df87\",\n    \"url\": \"https://waaimedia.com/events/journalism-2026\"\n}"
+                            "raw": "{\n    \"name_en\": \"Digital Journalism Conference 2026\",\n    \"name_ar\": \"مؤتمر الصحافة الرقمية 2026\",\n    \"category_en\": \"Journalism\",\n    \"category_ar\": \"صحافة\",\n    \"place_en\": \"King Fahd Cultural Centre\",\n    \"place_ar\": \"مركز الملك فهد الثقافي\",\n    \"description_en\": \"Exploring the next horizon of investigative and automated reporting.\",\n    \"description_ar\": \"استكشاف آفاق الصحافة الاستقصائية والأتمتة الرقمية.\",\n    \"event_date\": \"2026-12-05\",\n    \"event_time\": \"10:00:00\",\n    \"url\": \"https://waaimedia.com/events/journalism-2026\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/v1/admin/events",
@@ -377,7 +372,7 @@
                                 "events"
                             ]
                         },
-                        "description": "Alternative draft creation using application/json when cover image is already hosted or referenced via cover_image_url."
+                        "description": "Creates a draft from JSON (no image). Images can only be uploaded as a file via multipart (see 2.2); `cover_image_url` is rejected with 422."
                     },
                     "response": []
                 },
@@ -447,7 +442,237 @@
                                 "{{event_id}}"
                             ]
                         },
-                        "description": "Partially or fully updates an existing event. Omitted fields are preserved. Server-controlled lifecycle fields (status, slug, published_at) are stripped. If published, mandatory fields cannot be cleared. Supports both PUT and PATCH."
+                        "description": "JSON update of non-file fields (PATCH or PUT). Omitted fields and the current image are preserved. Do not send cover_image_url (422)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2.5a Admin - Update Event (Multipart with Image, POST + _method=PATCH)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "var json = pm.response.json();",
+                                    "pm.test('Fields applied and cover_image_url is the generated public URL', function () {",
+                                    "    pm.expect(String(json.data.id)).to.eql(pm.collectionVariables.get('event_id'));",
+                                    "    pm.expect(json.data.name_en).to.eql('Global Future Media Summit 2026 (Updated)');",
+                                    "    pm.expect(json.data.cover_image_url).to.be.a('string').and.match(/^https:\\/\\/.+\\/events\\/covers\\/.+\\.(jpg|jpeg|png|webp)$/);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "_method",
+                                    "value": "PATCH",
+                                    "type": "text",
+                                    "description": "Required for multipart updates: method spoofing (PHP does not parse multipart on real PATCH/PUT)."
+                                },
+                                {
+                                    "key": "name_en",
+                                    "value": "Global Future Media Summit 2026 (Updated)",
+                                    "type": "text",
+                                    "description": "Optional. Omitted fields are preserved."
+                                },
+                                {
+                                    "key": "place_en",
+                                    "value": "Riyadh International Convention Center",
+                                    "type": "text",
+                                    "description": "Optional."
+                                },
+                                {
+                                    "key": "cover_image",
+                                    "type": "file",
+                                    "src": [],
+                                    "description": "Optional replacement image (jpeg, jpg, png, webp). Select a local file (keep under PHP upload_max_filesize). The previous image is deleted only after the update is saved."
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/events/{{event_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "events",
+                                "{{event_id}}"
+                            ]
+                        },
+                        "description": "Multipart update using POST with _method=PATCH (the supported way to upload a file on update). Select a local image in `cover_image`. Do not set Content-Type manually. The previous R2 image is deleted only after the update is saved."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2.5b Admin - Update Event rejects cover_image_url (422)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Content', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "var json = pm.response.json();",
+                                    "pm.test('cover_image_url is read-only', function () {",
+                                    "    pm.expect(json.errors.cover_image_url[0]).to.eql('The cover_image_url field is read-only. Upload the image as a file using the cover_image field.');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name_en\": \"Should Not Apply\",\n    \"cover_image_url\": \"https://example.com/not-allowed.jpg\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/events/{{event_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "events",
+                                "{{event_id}}"
+                            ]
+                        },
+                        "description": "cover_image_url is a read-only generated field. Echoing it back (or sending any URL / key / null) returns 422 and changes nothing."
+                    },
+                    "response": [
+                        {
+                            "name": "422 Unprocessable Content",
+                            "status": "Unprocessable Content",
+                            "code": 422,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"message\": \"The cover_image_url field is read-only. Upload the image as a file using the cover_image field.\",\n    \"errors\": {\n        \"cover_image_url\": [\n            \"The cover_image_url field is read-only. Upload the image as a file using the cover_image field.\"\n        ]\n    }\n}",
+                            "originalRequest": {
+                                "method": "PATCH",
+                                "url": {
+                                    "raw": "{{base_url}}/api/v1/admin/events/{{event_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "v1",
+                                        "admin",
+                                        "events",
+                                        "{{event_id}}"
+                                    ]
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "2.5c Admin - Update Event with no fields (422)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Content', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('Empty update is not silently successful', function () {",
+                                    "    pm.expect(pm.response.json().message).to.eql('No updatable fields were provided.');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/events/{{event_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "events",
+                                "{{event_id}}"
+                            ]
+                        },
+                        "description": "An update carrying no updatable field returns 422 instead of a silent 200. This is also what an unparsed multipart PATCH/PUT looks like; use POST with _method=PATCH for multipart."
                     },
                     "response": []
                 },
@@ -506,7 +731,129 @@
                                 "publish"
                             ]
                         },
-                        "description": "Validates that all mandatory fields are present (name_en, name_ar, category_en, category_ar, place_en, place_ar, description_en, description_ar, event_date, event_time, cover_image_url) and transitions status to published. If already present on draft, an empty body '{}' is accepted. Supports both POST and PATCH."
+                        "description": "Publishes the event. Readiness requires a stored cover image (uploaded earlier via 2.2/2.5a) or a cover_image file sent with this request (see 2.6a). cover_image_url is not accepted (422)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2.6a Admin - Publish Event with cover file (multipart)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "var json = pm.response.json();",
+                                    "pm.test('Published with a generated public cover URL', function () {",
+                                    "    pm.expect(json.data.status).to.eql('published');",
+                                    "    pm.expect(json.data.cover_image_url).to.match(/^https:\\/\\/.+\\/events\\/covers\\/.+/);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "cover_image",
+                                    "type": "file",
+                                    "src": [],
+                                    "description": "Optional replacement cover (jpeg/png/webp). Select a local file. Omit to publish with the stored cover."
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/events/{{event_id}}/publish",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "events",
+                                "{{event_id}}",
+                                "publish"
+                            ]
+                        },
+                        "description": "Publish with a replacement cover uploaded in the same request. The previous image is deleted only after the publish is saved. The event must otherwise be complete (titles, categories, places, descriptions, date, time)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2.6b Admin - Publish Event rejects cover_image_url (422)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Content', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('cover_image_url is read-only', function () {",
+                                    "    pm.expect(pm.response.json().errors.cover_image_url[0]).to.eql('The cover_image_url field is read-only. Upload the image as a file using the cover_image field.');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"cover_image_url\": \"https://example.com/not-allowed.jpg\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/events/{{event_id}}/publish",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "events",
+                                "{{event_id}}",
+                                "publish"
+                            ]
+                        },
+                        "description": "cover_image_url is rejected on publish as well."
                     },
                     "response": []
                 },
@@ -602,6 +949,182 @@
                             ]
                         },
                         "description": "Permanently hard-deletes an event from the database. Protected by dual-layer authorization: route middleware (role:admin) plus controller check ($user->isAdmin()). Returns HTTP 403 Forbidden for Editors."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2.9 Admin - Create Event rejects cover_image_url (422)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Content', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('cover_image_url is read-only', function () {",
+                                    "    pm.expect(pm.response.json().errors.cover_image_url[0]).to.eql('The cover_image_url field is read-only. Upload the image as a file using the cover_image field.');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name_en\": \"URL Input Is Not Allowed\",\n    \"cover_image_url\": \"https://example.com/not-allowed.jpg\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/events",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "events"
+                            ]
+                        },
+                        "description": "URL, key or path image input is rejected on create; nothing is created."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2.10 Admin - Create Event with invalid image file (422)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Content', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test('cover_image validation error returned', function () {",
+                                    "    pm.expect(pm.response.json().errors).to.have.property('cover_image');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "name_en",
+                                    "value": "Invalid Image Test",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "cover_image",
+                                    "value": "not-an-image",
+                                    "type": "text",
+                                    "description": "Not a file. Swap for a PDF or an oversized image (type: file) to test those cases."
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/events",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "events"
+                            ]
+                        },
+                        "description": "A non-image cover_image is rejected; nothing is created or uploaded."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2.11 Admin - Update Event unauthenticated (401)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 401 Unauthorized', function () {",
+                                    "    pm.response.to.have.status(401);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "_method",
+                                    "value": "PATCH",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "name_en",
+                                    "value": "No Token",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/events/{{event_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "events",
+                                "{{event_id}}"
+                            ]
+                        },
+                        "description": "No Authorization header."
                     },
                     "response": []
                 }

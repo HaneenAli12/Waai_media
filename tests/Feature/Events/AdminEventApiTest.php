@@ -6,6 +6,9 @@ use App\Models\Event;
 use App\Models\User;
 use App\Services\Events\EventSlugService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -334,7 +337,7 @@ class AdminEventApiTest extends TestCase
         $response = $this->postJson("/api/v1/admin/events/{$event->id}/publish", []);
 
         $response->assertStatus(422)
-            ->assertJsonValidationErrors(['place_en', 'place_ar', 'category_en', 'category_ar', 'event_date', 'cover_image_url']);
+            ->assertJsonValidationErrors(['place_en', 'place_ar', 'category_en', 'category_ar', 'event_date', 'cover_image']);
     }
 
     public function test_publishing_completes_successfully_and_sets_published_at_and_slug(): void
@@ -344,6 +347,8 @@ class AdminEventApiTest extends TestCase
             'name_ar' => 'فعالية جاهزة للنشر',
             'slug' => null,
             'published_at' => null,
+            // Legacy external cover left untouched by earlier versions satisfies publish readiness
+            'cover_image_url' => 'https://media.waaimedia.com/events/covers/sample.jpg',
         ]);
 
         Sanctum::actingAs($this->admin, ['access']);
@@ -354,7 +359,6 @@ class AdminEventApiTest extends TestCase
             'place_en' => 'Riyadh Center',
             'event_date' => '2026-11-25',
             'event_time' => '10:00:00',
-            'cover_image_url' => 'https://media.waaimedia.com/events/covers/sample.jpg',
         ]);
 
         $response->assertStatus(200)
@@ -431,16 +435,18 @@ class AdminEventApiTest extends TestCase
 
         Sanctum::actingAs($this->admin, ['access']);
 
-        // Supply only the missing cover_image_url at publish time
-        $response = $this->postJson("/api/v1/admin/events/{$event->id}/publish", [
-            'cover_image_url' => 'https://media.waaimedia.com/events/covers/final.jpg',
-        ]);
+        // Supply only the missing cover as an uploaded file at publish time
+        Storage::fake('r2');
+        Config::set('filesystems.disks.r2.url', 'https://pub-r2.waai.test');
+        $response = $this->post("/api/v1/admin/events/{$event->id}/publish", [
+            'cover_image' => UploadedFile::fake()->createWithContent('final.jpg', base64_decode('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=')),
+        ], ['Accept' => 'application/json']);
 
         $response->assertStatus(200)
             ->assertJsonPath('data.status', 'published')
             ->assertJsonPath('data.name_en', 'Nearly Complete Event')
-            ->assertJsonPath('data.name_ar', 'فعالية شبه مكتملة')
-            ->assertJsonPath('data.cover_image_url', 'https://media.waaimedia.com/events/covers/final.jpg');
+            ->assertJsonPath('data.name_ar', 'فعالية شبه مكتملة');
+        $this->assertStringStartsWith('https://pub-r2.waai.test/events/covers/', $response->json('data.cover_image_url'));
 
         $this->assertNotNull($response->json('data.published_at'));
 
@@ -452,8 +458,8 @@ class AdminEventApiTest extends TestCase
             'place_en' => 'Jeddah Convention Center',
             'event_date' => '2026-12-01',
             'event_time' => '14:00:00',
-            'cover_image_url' => 'https://media.waaimedia.com/events/covers/final.jpg',
         ]);
+        $this->assertStringStartsWith('events/covers/', Event::findOrFail($event->id)->cover_image_url);
     }
 
     public function test_admin_and_editor_can_unpublish_event_back_to_draft(): void
@@ -620,22 +626,24 @@ class AdminEventApiTest extends TestCase
         ]);
 
         // 2. Publish draft by supplying Arabic title and remaining mandatory publication fields
-        $publishResponse = $this->postJson("/api/v1/admin/events/{$eventId}/publish", [
+        Storage::fake('r2');
+        Config::set('filesystems.disks.r2.url', 'https://pub-r2.waai.test');
+        $publishResponse = $this->post("/api/v1/admin/events/{$eventId}/publish", [
             'name_ar' => 'ملتقى الابتكار والإعلام 2026',
             'category_ar' => 'الإعلام',
             'place_ar' => 'مركز المؤتمرات بالرياض',
             'description_ar' => 'وصف تفصيلي باللغة العربية.',
             'event_date' => '2026-12-10',
             'event_time' => '09:00:00',
-            'cover_image_url' => 'https://media.waaimedia.com/events/covers/innovation-2026.jpg',
-        ]);
+            'cover_image' => UploadedFile::fake()->createWithContent('innovation.jpg', base64_decode('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=')),
+        ], ['Accept' => 'application/json']);
 
         $publishResponse->assertStatus(200)
             ->assertJsonPath('data.status', 'published')
             ->assertJsonPath('data.name_en', 'Media and Innovation Forum 2026')
             ->assertJsonPath('data.name_ar', 'ملتقى الابتكار والإعلام 2026')
-            ->assertJsonPath('data.slug', "media-and-innovation-forum-2026-{$eventId}")
-            ->assertJsonPath('data.cover_image_url', 'https://media.waaimedia.com/events/covers/innovation-2026.jpg');
+            ->assertJsonPath('data.slug', "media-and-innovation-forum-2026-{$eventId}");
+        $this->assertStringStartsWith('https://pub-r2.waai.test/events/covers/', $publishResponse->json('data.cover_image_url'));
 
         $this->assertNotNull($publishResponse->json('data.published_at'));
 

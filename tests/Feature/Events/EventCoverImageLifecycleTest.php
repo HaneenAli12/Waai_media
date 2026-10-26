@@ -333,7 +333,7 @@ class EventCoverImageLifecycleTest extends TestCase
         $response = $this->postJson("/api/v1/admin/events/{$event->id}/publish", []);
 
         $response->assertStatus(422)
-            ->assertJsonValidationErrors(['cover_image_url']);
+            ->assertJsonValidationErrors(['cover_image']);
     }
 
     // =========================================================================
