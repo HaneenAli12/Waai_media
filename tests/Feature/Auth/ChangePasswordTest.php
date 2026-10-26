@@ -3,8 +3,8 @@
 use App\Models\ActivityLog;
 use App\Models\User;
 
-test('authenticated user can change password with valid current password', function () {
-    $user = User::factory()->create([
+test('authenticated admin can change password with valid current password', function () {
+    $user = User::factory()->admin()->create([
         'email' => 'change@example.com',
         'password' => 'OldPassword1!',
     ]);
@@ -46,7 +46,7 @@ test('authenticated user can change password with valid current password', funct
 });
 
 test('change password fails if current password is incorrect', function () {
-    $user = User::factory()->create([
+    $user = User::factory()->admin()->create([
         'email' => 'change_fail@example.com',
         'password' => 'CorrectPassword1!',
     ]);
@@ -75,8 +75,30 @@ test('unauthenticated user cannot change password', function () {
     ])->assertStatus(401);
 });
 
+test('editors are strictly forbidden from changing password under any circumstances', function () {
+    $editor = User::factory()->editor()->create([
+        'email' => 'editor_pwd@example.com',
+        'password' => 'OldPassword1!',
+    ]);
+
+    $loginResponse = $this->postJson('/api/v1/auth/login', [
+        'email' => 'editor_pwd@example.com',
+        'password' => 'OldPassword1!',
+    ]);
+    $token = $loginResponse->json('token');
+
+    $response = $this->withToken($token)
+        ->postJson('/api/v1/auth/change-password', [
+            'current_password' => 'OldPassword1!',
+            'password' => 'NewSecurePassword2@',
+            'password_confirmation' => 'NewSecurePassword2@',
+        ]);
+
+    $response->assertStatus(403);
+});
+
 test('new password cannot be the same as the current password', function () {
-    $user = User::factory()->create([
+    $user = User::factory()->admin()->create([
         'email' => 'reuse@example.com',
         'password' => 'SamePassword1!',
     ]);
@@ -99,7 +121,7 @@ test('new password cannot be the same as the current password', function () {
 });
 
 test('incorrect current password creates a safe activity log', function () {
-    $user = User::factory()->create([
+    $user = User::factory()->admin()->create([
         'email' => 'log_fail@example.com',
         'password' => 'CorrectPassword1!',
     ]);
@@ -131,7 +153,7 @@ test('incorrect current password creates a safe activity log', function () {
 });
 
 test('current session remains valid but other sessions are revoked after password change', function () {
-    $user = User::factory()->create([
+    $user = User::factory()->admin()->create([
         'email' => 'multi_session@example.com',
         'password' => 'OldPassword1!',
     ]);
@@ -170,7 +192,7 @@ test('current session remains valid but other sessions are revoked after passwor
 });
 
 test('rate limiting is enforced for repeated change password attempts', function () {
-    $user = User::factory()->create([
+    $user = User::factory()->admin()->create([
         'email' => 'throttle_change@example.com',
         'password' => 'OldPassword1!',
     ]);

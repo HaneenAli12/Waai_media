@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\Auth\ActivityLogger;
 use App\Services\Auth\AdminSafetyService;
 use App\Services\Auth\SessionManager;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,7 +30,7 @@ class AdminUserService
     ): LengthAwarePaginator {
         $query = User::query()->orderBy('created_at', 'desc')->orderBy('id', 'desc');
 
-        if ($role !== null && in_array($role, ['admin', 'editor'], true)) {
+        if ($role !== null && in_array($role, ['super_admin', 'admin', 'editor'], true)) {
             $query->where('role', $role);
         }
 
@@ -47,12 +48,19 @@ class AdminUserService
 
     /**
      * Create a new user (admin or editor) and record activity log.
+     * Never permits super_admin assignment through ordinary creation.
      *
      * @param  array{name: string, email: string, password: string, role: string}  $data
      */
     public function createUser(array $data, Request $request): User
     {
-        $actorId = $request->user()?->id;
+        $actor = $request->user();
+        $actorId = $actor?->id;
+
+        // Security assertion: never allow super_admin creation via ordinary endpoints
+        if ($data['role'] === 'super_admin') {
+            throw new AuthorizationException('Assigning super_admin through ordinary user management is forbidden.');
+        }
 
         return DB::transaction(function () use ($data, $request, $actorId) {
             $user = User::create([
@@ -74,6 +82,7 @@ class AdminUserService
 
     /**
      * Update permitted user details. Password is optional.
+     * Protected Super Admin cannot have email changed.
      *
      * @param  array{name: string, email: string, password?: string|null}  $data
      */
@@ -82,6 +91,16 @@ class AdminUserService
         $actorId = $request->user()?->id;
 
         return DB::transaction(function () use ($user, $data, $request, $actorId) {
+            /** @var User $lockedUser */
+            $lockedUser = User::where('id', $user->id)->lockForUpdate()->firstOrFail();
+
+            // Protected Super Admin email cannot be modified through ordinary user management
+            if ($lockedUser->isProtectedSuperAdmin()) {
+                if (strtolower(trim($data['email'])) !== strtolower(User::DESIGNATED_SUPER_ADMIN_EMAIL)) {
+                    throw new AuthorizationException('The protected Super Admin email address cannot be changed.');
+                }
+            }
+
             $updatePayload = [
                 'name' => $data['name'],
                 'email' => $data['email'],
@@ -94,24 +113,24 @@ class AdminUserService
                 $passwordChanged = true;
             }
 
-            $user->update($updatePayload);
+            $lockedUser->update($updatePayload);
 
             // If an admin updated their own password here, revoke other sessions
             if ($passwordChanged) {
-                if ($currentToken = $user->currentAccessToken()) {
-                    $this->sessionManager->revokeOtherSessionsForPasswordChange($user, $currentToken->id, $request);
+                if ($currentToken = $lockedUser->currentAccessToken()) {
+                    $this->sessionManager->revokeOtherSessionsForPasswordChange($lockedUser, $currentToken->id, $request);
                 } else {
-                    $this->sessionManager->revokeAllSessions($user, 'password_updated', $request);
+                    $this->sessionManager->revokeAllSessions($lockedUser, 'password_updated', $request);
                 }
             }
 
             $this->activityLogger->log($actorId, 'admin.user_updated', $request, [
-                'target_user_id' => $user->id,
-                'target_email' => $user->email,
+                'target_user_id' => $lockedUser->id,
+                'target_email' => $lockedUser->email,
                 'password_changed' => $passwordChanged,
             ]);
 
-            return $user->fresh();
+            return $lockedUser->fresh();
         });
     }
 
@@ -123,30 +142,52 @@ class AdminUserService
         $actorId = $request->user()?->id;
 
         DB::transaction(function () use ($user, $newPassword, $request, $actorId) {
-            $user->update([
+            /** @var User $lockedUser */
+            $lockedUser = User::where('id', $user->id)->lockForUpdate()->firstOrFail();
+
+            if ($lockedUser->isProtectedSuperAdmin()) {
+                throw new AuthorizationException('The protected Super Admin account password cannot be reset via ordinary admin endpoints.');
+            }
+
+            $lockedUser->update([
                 'password' => $newPassword,
             ]);
 
             // Revoke all existing sessions and access tokens for the target user
-            $this->sessionManager->revokeAllSessions($user, 'admin_password_reset', $request);
+            $this->sessionManager->revokeAllSessions($lockedUser, 'admin_password_reset', $request);
 
             $this->activityLogger->log($actorId, 'admin.user_password_reset', $request, [
-                'target_user_id' => $user->id,
-                'target_email' => $user->email,
+                'target_user_id' => $lockedUser->id,
+                'target_email' => $lockedUser->email,
             ]);
         });
     }
 
     /**
-     * Change a user's role with atomic last-admin safety guard and session revocation.
+     * Change a user's role between admin and editor.
+     * MANDATORY: Super Admin ONLY. Never allows super_admin assignment.
      */
     public function changeRole(User $user, string $newRole, Request $request): User
     {
-        $actorId = $request->user()?->id;
+        $actor = $request->user();
+        $actorId = $actor?->id;
+
+        if (! $actor || ! $actor->isSuperAdmin()) {
+            throw new AuthorizationException('Forbidden. Only the Super Admin can change user roles.');
+        }
+
+        if (! in_array($newRole, ['admin', 'editor'], true)) {
+            throw new AuthorizationException('Invalid role. Roles can only be changed between admin and editor.');
+        }
 
         return DB::transaction(function () use ($user, $newRole, $request, $actorId) {
             // Lock user row for concurrency protection
             $lockedUser = User::where('id', $user->id)->lockForUpdate()->firstOrFail();
+
+            // Protected Super Admin cannot be demoted through ordinary endpoints
+            if ($lockedUser->isProtectedSuperAdmin()) {
+                throw new AuthorizationException('The designated Super Admin account is permanently protected and cannot be demoted.');
+            }
 
             if ($lockedUser->role === $newRole) {
                 return $lockedUser;
@@ -172,24 +213,40 @@ class AdminUserService
     }
 
     /**
-     * Delete a user with atomic first-admin-ever-created and last-admin protections.
-     * Hard-deletes editors. Protects the first admin ever created and the last remaining active admin.
+     * Delete a user with atomic protections.
+     * Regular Admin cannot delete another Admin or the protected Super Admin.
+     * Super Admin can delete regular Admins and Editors.
+     * Protected Super Admin cannot be deleted through ordinary endpoints.
      *
      * @throws ValidationException
      */
     public function deleteUser(User $user, Request $request): void
     {
-        $actorId = $request->user()?->id;
+        $actor = $request->user();
+        $actorId = $actor?->id;
 
-        DB::transaction(function () use ($user, $request, $actorId) {
+        if (! $actor || ! $actor->isAnyAdmin()) {
+            throw new AuthorizationException('Forbidden. Only administrators can delete accounts.');
+        }
+
+        DB::transaction(function () use ($user, $actor, $request, $actorId) {
             /** @var User $lockedUser */
             $lockedUser = User::where('id', $user->id)->lockForUpdate()->firstOrFail();
 
-            if ($lockedUser->isAdmin()) {
-                // 1. Guard against deleting the first admin account ever created
-                $this->adminSafety->ensureNotFirstAdmin($lockedUser);
+            // 1. Permanent guard: protected Super Admin cannot be deleted
+            if ($lockedUser->isProtectedSuperAdmin() || $lockedUser->isFirstAdminEverCreated()) {
+                throw new AuthorizationException('The designated Super Admin account is permanently protected and cannot be deleted.');
+            }
 
-                // 2. Guard against deleting the last remaining active admin
+            // 2. Regular Admin can ONLY delete Editors (and self subject to safeguards)
+            if (! $actor->isSuperAdmin()) {
+                if ($lockedUser->isAdmin() && (int) $actor->id !== (int) $lockedUser->id) {
+                    throw new AuthorizationException('Regular administrators cannot delete other administrators.');
+                }
+            }
+
+            // 3. Last admin guard if deleting an admin
+            if ($lockedUser->isAnyAdmin()) {
                 $this->adminSafety->ensureCanDeleteOrDemote($lockedUser, null);
             }
 

@@ -34,6 +34,16 @@ class UserFactory extends Factory
     }
 
     /**
+     * Define the user as a Super Administrator.
+     */
+    public function superAdmin(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => 'super_admin',
+        ]);
+    }
+
+    /**
      * Define the user as an Administrator.
      */
     public function admin(): static

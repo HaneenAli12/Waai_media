@@ -53,12 +53,30 @@ class User extends Authenticatable
         ];
     }
 
+    public const DESIGNATED_SUPER_ADMIN_EMAIL = 'waaimedia@gmail.com';
+
+    /**
+     * Check if the user is a Super Administrator.
+     */
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === 'super_admin';
+    }
+
     /**
      * Check if the user is an Administrator.
      */
     public function isAdmin(): bool
     {
         return $this->role === 'admin';
+    }
+
+    /**
+     * Check if the user has administrative privileges (Super Admin or Admin).
+     */
+    public function isAnyAdmin(): bool
+    {
+        return in_array($this->role, ['super_admin', 'admin'], true);
     }
 
     /**
@@ -94,7 +112,7 @@ class User extends Authenticatable
     }
 
     /**
-     * Count active (non-soft-deleted) administrators in the system.
+     * Count active (non-soft-deleted) regular administrators in the system.
      */
     public static function activeAdminsCount(): int
     {
@@ -102,7 +120,15 @@ class User extends Authenticatable
     }
 
     /**
-     * Determine if this user is the last remaining active administrator.
+     * Count all active administrators (super_admin + admin).
+     */
+    public static function totalActiveAdminsCount(): int
+    {
+        return static::whereIn('role', ['super_admin', 'admin'])->count();
+    }
+
+    /**
+     * Determine if this user is the last remaining active regular administrator.
      */
     public function isLastActiveAdmin(): bool
     {
@@ -114,27 +140,22 @@ class User extends Authenticatable
     }
 
     /**
-     * Permanent system setting key for the protected first admin.
+     * Permanent system setting key for legacy protected first admin.
      */
     public const PROTECTED_ADMIN_SETTING_KEY = 'protected_first_admin_user_id';
 
     /**
-     * Bootstrap model events to capture the very first admin created in the system.
+     * Determine if this user is the designated protected Super Admin account.
+     * The protection is tied directly and unconditionally to waaimedia@gmail.com,
+     * independent of system_settings or database user IDs.
      */
-    protected static function booted(): void
+    public function isProtectedSuperAdmin(): bool
     {
-        static::created(function (User $user) {
-            if ($user->role === 'admin') {
-                static::registerProtectedFirstAdminId((int) $user->id);
-            }
-        });
+        return strtolower(trim((string) $this->email)) === strtolower(self::DESIGNATED_SUPER_ADMIN_EMAIL);
     }
 
     /**
-     * Safely and atomically register the given user ID as the protected first admin
-     * if no protected first admin ID has been registered yet.
-     * Uses atomic insertOrIgnore on the primary key so concurrent calls will never duplicate
-     * or raise unhandled exceptions.
+     * Safely register the given user ID into legacy system_settings if needed.
      */
     public static function registerProtectedFirstAdminId(int $userId): void
     {
@@ -155,7 +176,7 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the ID of the permanently protected first Administrator account.
+     * Get the ID of the permanently protected first Administrator account from system settings.
      */
     public static function protectedFirstAdminId(): ?int
     {
@@ -169,46 +190,35 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the first Administrator account ever created in the database.
-     * Uses the permanently stored ID from system_settings. If not yet initialized,
-     * falls back to the earliest created admin and registers it.
+     * Determine if this user is the permanently protected first Administrator account (legacy).
+     */
+    public function isFirstAdminEverCreated(): bool
+    {
+        if ($this->isProtectedSuperAdmin()) {
+            return true;
+        }
+
+        $protectedId = static::protectedFirstAdminId();
+
+        return $protectedId !== null && (int) $this->id === $protectedId;
+    }
+
+    /**
+     * Deprecated alias for backward compatibility.
      */
     public static function firstAdminEverCreated(): ?self
     {
-        $protectedId = static::protectedFirstAdminId();
+        $superAdmin = static::withTrashed()->where('email', self::DESIGNATED_SUPER_ADMIN_EMAIL)->first();
+        if ($superAdmin) {
+            return $superAdmin;
+        }
 
+        $protectedId = static::protectedFirstAdminId();
         if ($protectedId !== null) {
             return static::withTrashed()->find($protectedId);
         }
 
-        // Fallback if not yet recorded: find earliest admin and register atomically
-        $earliest = static::withTrashed()
-            ->where('role', 'admin')
-            ->orderBy('created_at', 'asc')
-            ->orderBy('id', 'asc')
-            ->first();
-
-        if ($earliest) {
-            static::registerProtectedFirstAdminId((int) $earliest->id);
-        }
-
-        return $earliest;
-    }
-
-    /**
-     * Determine if this user is the permanently protected first Administrator account.
-     */
-    public function isFirstAdminEverCreated(): bool
-    {
-        $protectedId = static::protectedFirstAdminId();
-
-        if ($protectedId !== null) {
-            return (int) $this->id === $protectedId;
-        }
-
-        $firstAdmin = static::firstAdminEverCreated();
-
-        return $firstAdmin !== null && (int) $firstAdmin->id === (int) $this->id;
+        return null;
     }
 
     /**

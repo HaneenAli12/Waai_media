@@ -41,8 +41,8 @@ Route::prefix('auth')->group(function () {
 // Public read-only endpoint (no authentication required)
 Route::get('/counters', [CounterController::class, 'index']);
 
-// Admin Dashboard endpoints (requires authenticated Admin or Editor)
-Route::prefix('admin')->middleware(['auth:sanctum', 'require.access', 'role:admin,editor'])->group(function () {
+// Admin Dashboard endpoints (requires authenticated Super Admin, Admin, or Editor)
+Route::prefix('admin')->middleware(['auth:sanctum', 'require.access', 'role:super_admin,admin,editor'])->group(function () {
     Route::get('/counters', [App\Http\Controllers\Api\Admin\CounterController::class, 'index']);
     Route::put('/counters', [App\Http\Controllers\Api\Admin\CounterController::class, 'update']);
     Route::patch('/counters', [App\Http\Controllers\Api\Admin\CounterController::class, 'update']);
@@ -59,7 +59,7 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'require.access', 'role:admi
     Route::match(['post', 'patch'], '/events/{event}/publish', [AdminEventController::class, 'publish']);
     Route::match(['post', 'patch'], '/events/{event}/unpublish', [AdminEventController::class, 'unpublish']);
     Route::delete('/events/{event}', [AdminEventController::class, 'destroy'])
-        ->middleware('role:admin');
+        ->middleware('role:super_admin,admin');
     // Background Music Module Admin Endpoints
     Route::get('/background-music', [AdminBackgroundMusicController::class, 'show']);
     Route::match(['put', 'patch', 'post'], '/background-music', [AdminBackgroundMusicController::class, 'update']);
@@ -68,7 +68,7 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'require.access', 'role:admi
 // =========================================================================
 // Users Management Admin Endpoints (Strictly Administrator Only)
 // =========================================================================
-Route::prefix('admin/users')->middleware(['auth:sanctum', 'require.access', 'role:admin'])->group(function () {
+Route::prefix('admin/users')->middleware(['auth:sanctum', 'require.access', 'role:super_admin,admin'])->group(function () {
     Route::get('/', [AdminUserController::class, 'index']);
     Route::post('/', [AdminUserController::class, 'store']);
     Route::get('/{user}', [AdminUserController::class, 'show']);
@@ -99,7 +99,7 @@ Route::get('/events/{slug}', [EventController::class, 'show']);
 // =========================================================================
 Route::get('/app-links', [AppLinkController::class, 'index']);
 Route::put('/app-links', [AppLinkController::class, 'update'])
-    ->middleware(['auth:sanctum', 'require.access', 'role:admin,editor']);
+    ->middleware(['auth:sanctum', 'require.access', 'role:super_admin,admin,editor']);
 
 // =========================================================================
 // Categories Module Endpoints (Public Shared Read-Only)

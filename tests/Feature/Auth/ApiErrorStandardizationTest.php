@@ -177,7 +177,7 @@ test('unauthenticated request to change-password returns 401 with standard messa
 });
 
 test('change password with wrong current password returns 422 with validation error structure', function () {
-    $user = User::factory()->create([
+    $user = User::factory()->admin()->create([
         'email' => 'cp@example.com',
         'password' => 'ActualPassword1!',
     ]);
@@ -204,7 +204,7 @@ test('change password with wrong current password returns 422 with validation er
 });
 
 test('change password with same password as current returns 422 with validation error structure', function () {
-    $user = User::factory()->create([
+    $user = User::factory()->admin()->create([
         'email' => 'same@example.com',
         'password' => 'SamePassword1!',
     ]);

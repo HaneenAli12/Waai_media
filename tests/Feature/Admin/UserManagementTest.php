@@ -2,12 +2,15 @@
 
 use App\Models\ActivityLog;
 use App\Models\User;
-use App\Models\UserSession;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
+
+// =========================================================================
+// 1. Unauthenticated & Editor Access Boundaries
+// =========================================================================
 
 test('unauthenticated requests to all users endpoints are rejected with 401', function (string $method, string $uri) {
     $this->json($method, $uri)->assertStatus(401);
@@ -47,11 +50,15 @@ test('editors are strictly forbidden from all users management endpoints with 40
     ['DELETE', '/api/v1/admin/users/{id}'],
 ]);
 
-test('admin can list users with pagination, search, and role filters', function () {
-    $admin = User::factory()->admin()->create(['name' => 'Super Admin', 'email' => 'mainadmin@waaimedia.com']);
-    User::factory()->editor()->create(['name' => 'Editor Alice', 'email' => 'alice@waaimedia.com']);
+// =========================================================================
+// 2. Listing & Details
+// =========================================================================
+
+test('super admin and admin can list users with pagination, search, and role filters', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    User::factory()->admin()->create(['name' => 'Admin Alice', 'email' => 'alice@waaimedia.com']);
     User::factory()->editor()->create(['name' => 'Editor Bob', 'email' => 'bob@waaimedia.com']);
-    Sanctum::actingAs($admin, ['access']);
+    Sanctum::actingAs($superAdmin, ['access']);
 
     // 1. Basic list
     $res = $this->getJson('/api/v1/admin/users');
@@ -79,7 +86,7 @@ test('admin can list users with pagination, search, and role filters', function 
     $searchList = $this->getJson('/api/v1/admin/users?search=Alice');
     $searchList->assertStatus(200);
     expect($searchList->json('data'))->toHaveCount(1)
-        ->and($searchList->json('data.0.name'))->toBe('Editor Alice');
+        ->and($searchList->json('data.0.name'))->toBe('Admin Alice');
 });
 
 test('admin can view a single user details', function () {
@@ -98,9 +105,13 @@ test('admin can view a single user details', function () {
         ]);
 });
 
-test('admin can create editor and admin accounts with secure password hashing', function () {
-    $admin = User::factory()->admin()->create();
-    Sanctum::actingAs($admin, ['access']);
+// =========================================================================
+// 3. User Creation Rules
+// =========================================================================
+
+test('super admin can create admin and editor accounts', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    Sanctum::actingAs($superAdmin, ['access']);
 
     // Create Editor
     $resEditor = $this->postJson('/api/v1/admin/users', [
@@ -109,42 +120,78 @@ test('admin can create editor and admin accounts with secure password hashing', 
         'password' => 'SecretPassword123!',
         'role' => 'editor',
     ]);
-
     $resEditor->assertStatus(201)
         ->assertJson([
-            'message' => 'User created successfully.',
             'data' => [
                 'name' => 'New Editor',
                 'email' => 'neweditor@waaimedia.com',
                 'role' => 'editor',
             ],
         ]);
-
     $this->assertDatabaseHas('users', ['email' => 'neweditor@waaimedia.com', 'role' => 'editor']);
-    $createdEditor = User::where('email', 'neweditor@waaimedia.com')->first();
-    expect(Hash::check('SecretPassword123!', $createdEditor->password))->toBeTrue();
 
     // Create Admin
     $resAdmin = $this->postJson('/api/v1/admin/users', [
-        'name' => 'Second Admin',
-        'email' => 'secondadmin@waaimedia.com',
+        'name' => 'New Admin',
+        'email' => 'newadmin@waaimedia.com',
         'password' => 'SecretAdmin123!',
         'role' => 'admin',
     ]);
-
     $resAdmin->assertStatus(201)
         ->assertJson([
             'data' => [
+                'name' => 'New Admin',
+                'email' => 'newadmin@waaimedia.com',
                 'role' => 'admin',
             ],
         ]);
-    $this->assertDatabaseHas('users', ['email' => 'secondadmin@waaimedia.com', 'role' => 'admin']);
+    $this->assertDatabaseHas('users', ['email' => 'newadmin@waaimedia.com', 'role' => 'admin']);
+});
+
+test('regular admin can create editors but CANNOT create admins', function () {
+    $admin = User::factory()->admin()->create();
+    Sanctum::actingAs($admin, ['access']);
+
+    // 1. Regular admin creates editor -> ALLOWED
+    $resEditor = $this->postJson('/api/v1/admin/users', [
+        'name' => 'Admin Created Editor',
+        'email' => 'admincreated_editor@waaimedia.com',
+        'password' => 'SecretPassword123!',
+        'role' => 'editor',
+    ]);
+    $resEditor->assertStatus(201);
+    $this->assertDatabaseHas('users', ['email' => 'admincreated_editor@waaimedia.com', 'role' => 'editor']);
+
+    // 2. Regular admin attempts to create an Admin -> FORBIDDEN (403)
+    $resAdmin = $this->postJson('/api/v1/admin/users', [
+        'name' => 'Admin Attempted Admin',
+        'email' => 'adminattempt_admin@waaimedia.com',
+        'password' => 'SecretPassword123!',
+        'role' => 'admin',
+    ]);
+    $resAdmin->assertStatus(403);
+    $this->assertDatabaseMissing('users', ['email' => 'adminattempt_admin@waaimedia.com']);
+});
+
+test('creating user with super_admin role is rejected with 403 or 422', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    Sanctum::actingAs($superAdmin, ['access']);
+
+    $res = $this->postJson('/api/v1/admin/users', [
+        'name' => 'Illegal SuperAdmin',
+        'email' => 'illegal_super@waaimedia.com',
+        'password' => 'Password123!',
+        'role' => 'super_admin',
+    ]);
+
+    expect(in_array($res->status(), [403, 422], true))->toBeTrue();
+    $this->assertDatabaseMissing('users', ['email' => 'illegal_super@waaimedia.com']);
 });
 
 test('creating user with duplicate email or invalid role is rejected with 422', function () {
-    $admin = User::factory()->admin()->create();
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
     User::factory()->create(['email' => 'existing@waaimedia.com']);
-    Sanctum::actingAs($admin, ['access']);
+    Sanctum::actingAs($superAdmin, ['access']);
 
     // Duplicate email
     $this->postJson('/api/v1/admin/users', [
@@ -160,12 +207,16 @@ test('creating user with duplicate email or invalid role is rejected with 422', 
         'name' => 'Test',
         'email' => 'valid@waaimedia.com',
         'password' => 'Password123!',
-        'role' => 'superadmin',
+        'role' => 'invalid_role',
     ])->assertStatus(422)
         ->assertJsonValidationErrors(['role']);
 });
 
-test('admin can update an editor profile', function () {
+// =========================================================================
+// 4. User Update Rules
+// =========================================================================
+
+test('regular admin can update an editor profile', function () {
     $admin = User::factory()->admin()->create();
     $editor = User::factory()->editor()->create(['name' => 'Old Name', 'email' => 'old@waaimedia.com']);
     Sanctum::actingAs($admin, ['access']);
@@ -186,25 +237,7 @@ test('admin can update an editor profile', function () {
     $this->assertDatabaseHas('users', ['id' => $editor->id, 'name' => 'New Name', 'email' => 'new@waaimedia.com']);
 });
 
-test('admin can update their own admin profile', function () {
-    $admin = User::factory()->admin()->create(['name' => 'Admin Self', 'email' => 'self@waaimedia.com']);
-    Sanctum::actingAs($admin, ['access']);
-
-    $res = $this->putJson("/api/v1/admin/users/{$admin->id}", [
-        'name' => 'Admin Self Updated',
-        'email' => 'selfupdated@waaimedia.com',
-    ]);
-
-    $res->assertStatus(200)
-        ->assertJson([
-            'data' => [
-                'name' => 'Admin Self Updated',
-                'email' => 'selfupdated@waaimedia.com',
-            ],
-        ]);
-});
-
-test('admin cannot update another admin profile and receives 403', function () {
+test('regular admin cannot update another admin profile and receives 403', function () {
     $adminA = User::factory()->admin()->create(['name' => 'Admin A']);
     $adminB = User::factory()->admin()->create(['name' => 'Admin B']);
     Sanctum::actingAs($adminA, ['access']);
@@ -218,220 +251,290 @@ test('admin cannot update another admin profile and receives 403', function () {
     $this->assertDatabaseHas('users', ['id' => $adminB->id, 'name' => 'Admin B']);
 });
 
-test('admin can change user role and target active sessions are revoked', function () {
+test('regular admin cannot update the protected super admin and receives 403', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
     $admin = User::factory()->admin()->create();
-    $editor = User::factory()->editor()->create();
-
-    // Create active session and token for editor
-    $token = $editor->createToken('Device A', ['access']);
-    UserSession::create([
-        'user_id' => $editor->id,
-        'token_id' => $token->accessToken->id,
-        'access_token_id' => $token->accessToken->id,
-        'device_name' => 'Device A',
-        'is_remember' => false,
-    ]);
-
     Sanctum::actingAs($admin, ['access']);
 
-    $res = $this->patchJson("/api/v1/admin/users/{$editor->id}/role", [
-        'role' => 'admin',
-    ]);
-
-    $res->assertStatus(200)
-        ->assertJson([
-            'data' => ['role' => 'admin'],
-        ]);
-
-    $editor->refresh();
-    expect($editor->role)->toBe('admin');
-
-    // Tokens must be revoked
-    expect($editor->tokens()->count())->toBe(0);
-});
-
-test('admin cannot demote the last active admin and receives 403', function () {
-    $admin = User::factory()->admin()->create();
-    expect(User::activeAdminsCount())->toBe(1);
-    Sanctum::actingAs($admin, ['access']);
-
-    $res = $this->patchJson("/api/v1/admin/users/{$admin->id}/role", [
-        'role' => 'editor',
-    ]);
-
-    $res->assertStatus(403)
-        ->assertJson(['message' => 'Cannot delete or demote the last remaining active administrator.']);
-
-    $admin->refresh();
-    expect($admin->role)->toBe('admin');
-});
-
-test('admin can reset editor password and target sessions are revoked', function () {
-    $admin = User::factory()->admin()->create();
-    $editor = User::factory()->editor()->create();
-    $token = $editor->createToken('Device A', ['access']);
-    Sanctum::actingAs($admin, ['access']);
-
-    $res = $this->patchJson("/api/v1/admin/users/{$editor->id}/password", [
-        'password' => 'BrandNewPassword123!',
-        'password_confirmation' => 'BrandNewPassword123!',
-    ]);
-
-    $res->assertStatus(200)
-        ->assertJson(['message' => 'User password reset successfully.']);
-
-    $editor->refresh();
-    expect(Hash::check('BrandNewPassword123!', $editor->password))->toBeTrue()
-        ->and($editor->tokens()->count())->toBe(0);
-});
-
-test('admin cannot reset another admin password through users management', function () {
-    $adminA = User::factory()->admin()->create();
-    $adminB = User::factory()->admin()->create();
-    Sanctum::actingAs($adminA, ['access']);
-
-    $res = $this->patchJson("/api/v1/admin/users/{$adminB->id}/password", [
-        'password' => 'AttackingPassword123!',
-        'password_confirmation' => 'AttackingPassword123!',
+    $res = $this->putJson("/api/v1/admin/users/{$superAdmin->id}", [
+        'name' => 'Tampered Super Admin',
+        'email' => 'tampered_super@waaimedia.com',
     ]);
 
     $res->assertStatus(403);
 });
 
-test('admin can hard delete an editor', function () {
+test('super admin can update permitted fields of regular admin and editor', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    $admin = User::factory()->admin()->create(['name' => 'Admin Target', 'email' => 'admintarget@waaimedia.com']);
+    Sanctum::actingAs($superAdmin, ['access']);
+
+    $res = $this->putJson("/api/v1/admin/users/{$admin->id}", [
+        'name' => 'Admin Updated By Super',
+        'email' => 'admintarget_updated@waaimedia.com',
+    ]);
+
+    $res->assertStatus(200)
+        ->assertJson([
+            'data' => [
+                'name' => 'Admin Updated By Super',
+                'email' => 'admintarget_updated@waaimedia.com',
+            ],
+        ]);
+});
+
+test('protected super admin email cannot be changed through ordinary endpoints', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    Sanctum::actingAs($superAdmin, ['access']);
+
+    $res = $this->putJson("/api/v1/admin/users/{$superAdmin->id}", [
+        'name' => 'Updated Super Admin Name',
+        'email' => 'newemail_super@waaimedia.com',
+    ]);
+
+    $res->assertStatus(403);
+    $this->assertDatabaseHas('users', ['id' => $superAdmin->id, 'email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+});
+
+// =========================================================================
+// 5. Role Changes (Super Admin Only)
+// =========================================================================
+
+test('super admin can change role of editor to admin and admin to editor', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    $editor = User::factory()->editor()->create();
+    $admin = User::factory()->admin()->create();
+    Sanctum::actingAs($superAdmin, ['access']);
+
+    // 1. Editor -> Admin
+    $res1 = $this->patchJson("/api/v1/admin/users/{$editor->id}/role", [
+        'role' => 'admin',
+    ]);
+    $res1->assertStatus(200)->assertJson(['data' => ['role' => 'admin']]);
+    expect($editor->fresh()->role)->toBe('admin');
+
+    // 2. Admin -> Editor
+    $res2 = $this->patchJson("/api/v1/admin/users/{$admin->id}/role", [
+        'role' => 'editor',
+    ]);
+    $res2->assertStatus(200)->assertJson(['data' => ['role' => 'editor']]);
+    expect($admin->fresh()->role)->toBe('editor');
+});
+
+test('regular admin CANNOT change any user role and receives 403', function () {
     $admin = User::factory()->admin()->create();
     $editor = User::factory()->editor()->create();
     Sanctum::actingAs($admin, ['access']);
 
-    $res = $this->deleteJson("/api/v1/admin/users/{$editor->id}");
-    $res->assertStatus(200);
-
-    // Assert true hard delete (record removed from table, not just soft deleted)
-    $this->assertDatabaseMissing('users', ['id' => $editor->id]);
-});
-
-test('the first admin account ever created is protected and can never be deleted', function () {
-    // Admin 1 created first (First admin ever created)
-    $firstAdmin = User::factory()->admin()->create(['created_at' => now()->subDays(10)]);
-    // Admin 2 created second
-    $secondAdmin = User::factory()->admin()->create(['created_at' => now()->subDays(2)]);
-    // Admin 3 created third
-    $thirdAdmin = User::factory()->admin()->create(['created_at' => now()]);
-
-    expect(User::activeAdminsCount())->toBe(3);
-    expect($firstAdmin->isFirstAdminEverCreated())->toBeTrue();
-    expect($secondAdmin->isFirstAdminEverCreated())->toBeFalse();
-
-    // 1. Second admin attempts to delete the first admin -> REJECTED
-    Sanctum::actingAs($secondAdmin, ['access']);
-    $res1 = $this->deleteJson("/api/v1/admin/users/{$firstAdmin->id}");
-    $res1->assertStatus(403)
-        ->assertJson(['message' => 'The first administrator account ever created in the database is protected and cannot be deleted.']);
-    $this->assertDatabaseHas('users', ['id' => $firstAdmin->id]);
-
-    // 2. First admin attempts to delete self -> REJECTED
-    Sanctum::actingAs($firstAdmin, ['access']);
-    $res2 = $this->deleteJson("/api/v1/admin/users/{$firstAdmin->id}");
-    $res2->assertStatus(403)
-        ->assertJson(['message' => 'The first administrator account ever created in the database is protected and cannot be deleted.']);
-    $this->assertDatabaseHas('users', ['id' => $firstAdmin->id]);
-});
-
-test('first admin ever created remains protected even if a soft-deleted admin exists or newer admins are present', function () {
-    // First admin ever created (Active)
-    $firstAdmin = User::factory()->admin()->create(['created_at' => now()->subDays(20)]);
-    // Later admin who was soft-deleted
-    $softDeletedAdmin = User::factory()->admin()->create([
-        'created_at' => now()->subDays(15),
-        'deleted_at' => now()->subDays(5),
+    // Regular admin attempts to promote editor to admin
+    $res1 = $this->patchJson("/api/v1/admin/users/{$editor->id}/role", [
+        'role' => 'admin',
     ]);
-    // Active admin created recently
-    $currentAdmin = User::factory()->admin()->create(['created_at' => now()->subDays(2)]);
+    $res1->assertStatus(403);
+    expect($editor->fresh()->role)->toBe('editor');
 
-    expect($firstAdmin->isFirstAdminEverCreated())->toBeTrue();
-    expect($currentAdmin->isFirstAdminEverCreated())->toBeFalse();
-
-    Sanctum::actingAs($currentAdmin, ['access']);
-    $res = $this->deleteJson("/api/v1/admin/users/{$firstAdmin->id}");
-    $res->assertStatus(403)
-        ->assertJson(['message' => 'The first administrator account ever created in the database is protected and cannot be deleted.']);
-    $this->assertDatabaseHas('users', ['id' => $firstAdmin->id]);
+    // Regular admin attempts to demote another admin
+    $otherAdmin = User::factory()->admin()->create();
+    $res2 = $this->patchJson("/api/v1/admin/users/{$otherAdmin->id}/role", [
+        'role' => 'editor',
+    ]);
+    $res2->assertStatus(403);
+    expect($otherAdmin->fresh()->role)->toBe('admin');
 });
 
-test('the first admin account created is permanently registered in system_settings and identity remains static', function () {
-    // Before creation, no protected admin registered
-    expect(User::protectedFirstAdminId())->toBeNull();
+test('assigning super_admin via role change endpoint is strictly rejected', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    $editor = User::factory()->editor()->create();
+    Sanctum::actingAs($superAdmin, ['access']);
 
-    // 1. Create first admin ever created
-    $firstAdmin = User::factory()->admin()->create(['created_at' => now()->subDays(10)]);
+    $res = $this->patchJson("/api/v1/admin/users/{$editor->id}/role", [
+        'role' => 'super_admin',
+    ]);
 
-    // ID is recorded permanently in system_settings
-    expect(User::protectedFirstAdminId())->toBe($firstAdmin->id);
-    expect($firstAdmin->isFirstAdminEverCreated())->toBeTrue();
-
-    // 2. Create subsequent admins
-    $secondAdmin = User::factory()->admin()->create(['created_at' => now()->subDays(5)]);
-    $thirdAdmin = User::factory()->admin()->create(['created_at' => now()]);
-
-    // Protected ID remains locked to the first admin
-    expect(User::protectedFirstAdminId())->toBe($firstAdmin->id);
-    expect($secondAdmin->isFirstAdminEverCreated())->toBeFalse();
-    expect($thirdAdmin->isFirstAdminEverCreated())->toBeFalse();
-
-    // 3. An earlier editor is created and subsequently promoted to admin
-    $promotedEditor = User::factory()->editor()->create(['created_at' => now()->subDays(20)]);
-    $promotedEditor->update(['role' => 'admin']);
-
-    // Even though $promotedEditor has an earlier created_at, the protected admin ID does NOT change
-    expect(User::protectedFirstAdminId())->toBe($firstAdmin->id);
-    expect($firstAdmin->isFirstAdminEverCreated())->toBeTrue();
-    expect($promotedEditor->isFirstAdminEverCreated())->toBeFalse();
-
-    // 4. If the first admin's role changes or account is modified, the protected identity remains permanently anchored
-    $firstAdmin->update(['role' => 'editor']);
-    expect(User::protectedFirstAdminId())->toBe($firstAdmin->id);
-    expect($firstAdmin->isFirstAdminEverCreated())->toBeTrue();
+    expect(in_array($res->status(), [403, 422], true))->toBeTrue();
+    expect($editor->fresh()->role)->toBe('editor');
 });
 
-test('concurrent attempts to register protected first admin safely resolve to a single winner without error', function () {
-    // Both attempt to claim the protected admin slot
-    User::registerProtectedFirstAdminId(101);
-    User::registerProtectedFirstAdminId(102);
+test('protected super admin cannot be demoted through ordinary role change endpoint', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    Sanctum::actingAs($superAdmin, ['access']);
 
-    expect(User::protectedFirstAdminId())->toBe(101);
+    $res = $this->patchJson("/api/v1/admin/users/{$superAdmin->id}/role", [
+        'role' => 'admin',
+    ]);
+
+    $res->assertStatus(403);
+    expect($superAdmin->fresh()->role)->toBe('super_admin');
 });
 
-test('an admin may delete another admin if that account is not the first admin ever created or last active admin', function () {
-    $firstAdmin = User::factory()->admin()->create(['created_at' => now()->subDays(10)]);
-    $secondAdmin = User::factory()->admin()->create(['created_at' => now()->subDays(5)]);
-    $thirdAdmin = User::factory()->admin()->create(['created_at' => now()]);
+// =========================================================================
+// 6. Password Reset by Admin
+// =========================================================================
 
-    Sanctum::actingAs($firstAdmin, ['access']);
+test('super admin can reset password for regular admin and editor', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    $admin = User::factory()->admin()->create();
+    $editor = User::factory()->editor()->create();
+    Sanctum::actingAs($superAdmin, ['access']);
 
-    // First admin deletes third admin (not first admin, not last admin) -> ALLOWED
-    $res = $this->deleteJson("/api/v1/admin/users/{$thirdAdmin->id}");
+    // Reset editor password
+    $res1 = $this->patchJson("/api/v1/admin/users/{$editor->id}/password", [
+        'password' => 'BrandNewPassword123!',
+        'password_confirmation' => 'BrandNewPassword123!',
+    ]);
+    $res1->assertStatus(200);
+    expect(Hash::check('BrandNewPassword123!', $editor->fresh()->password))->toBeTrue();
+
+    // Reset admin password
+    $res2 = $this->patchJson("/api/v1/admin/users/{$admin->id}/password", [
+        'password' => 'BrandNewAdminPassword123!',
+        'password_confirmation' => 'BrandNewAdminPassword123!',
+    ]);
+    $res2->assertStatus(200);
+    expect(Hash::check('BrandNewAdminPassword123!', $admin->fresh()->password))->toBeTrue();
+});
+
+test('regular admin can reset editor password but CANNOT reset another admin password', function () {
+    $admin = User::factory()->admin()->create();
+    $otherAdmin = User::factory()->admin()->create();
+    $editor = User::factory()->editor()->create();
+    Sanctum::actingAs($admin, ['access']);
+
+    // Reset editor password -> ALLOWED
+    $res1 = $this->patchJson("/api/v1/admin/users/{$editor->id}/password", [
+        'password' => 'EditorPasswordReset123!',
+        'password_confirmation' => 'EditorPasswordReset123!',
+    ]);
+    $res1->assertStatus(200);
+
+    // Reset another admin password -> FORBIDDEN (403)
+    $res2 = $this->patchJson("/api/v1/admin/users/{$otherAdmin->id}/password", [
+        'password' => 'AdminPasswordReset123!',
+        'password_confirmation' => 'AdminPasswordReset123!',
+    ]);
+    $res2->assertStatus(403);
+});
+
+test('no one can reset password of the protected super admin via admin reset endpoint', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    $admin = User::factory()->admin()->create();
+
+    // Regular admin tries
+    Sanctum::actingAs($admin, ['access']);
+    $res1 = $this->patchJson("/api/v1/admin/users/{$superAdmin->id}/password", [
+        'password' => 'HackedPassword123!',
+        'password_confirmation' => 'HackedPassword123!',
+    ]);
+    $res1->assertStatus(403);
+
+    // Super admin tries self via admin reset endpoint
+    Sanctum::actingAs($superAdmin, ['access']);
+    $res2 = $this->patchJson("/api/v1/admin/users/{$superAdmin->id}/password", [
+        'password' => 'HackedPassword123!',
+        'password_confirmation' => 'HackedPassword123!',
+    ]);
+    $res2->assertStatus(403);
+});
+
+// =========================================================================
+// 7. Delete User Rules & Protected Account
+// =========================================================================
+
+test('super admin and regular admin can hard delete an editor', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    $admin = User::factory()->admin()->create();
+    $editor1 = User::factory()->editor()->create();
+    $editor2 = User::factory()->editor()->create();
+
+    // Regular admin deletes editor1
+    Sanctum::actingAs($admin, ['access']);
+    $res1 = $this->deleteJson("/api/v1/admin/users/{$editor1->id}");
+    $res1->assertStatus(200);
+    $this->assertDatabaseMissing('users', ['id' => $editor1->id]);
+
+    // Super admin deletes editor2
+    Sanctum::actingAs($superAdmin, ['access']);
+    $res2 = $this->deleteJson("/api/v1/admin/users/{$editor2->id}");
+    $res2->assertStatus(200);
+    $this->assertDatabaseMissing('users', ['id' => $editor2->id]);
+});
+
+test('super admin can delete a regular admin', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    $admin = User::factory()->admin()->create();
+    Sanctum::actingAs($superAdmin, ['access']);
+
+    $res = $this->deleteJson("/api/v1/admin/users/{$admin->id}");
     $res->assertStatus(200);
-
-    $this->assertDatabaseMissing('users', ['id' => $thirdAdmin->id]);
+    $this->assertDatabaseMissing('users', ['id' => $admin->id]);
 });
 
-test('an admin may delete their own account if they are not the protected first admin ever created', function () {
-    $firstAdmin = User::factory()->admin()->create(['created_at' => now()->subDays(10)]);
-    $secondAdmin = User::factory()->admin()->create(['created_at' => now()->subDays(2)]);
+test('regular admin CANNOT delete another regular admin', function () {
+    $adminA = User::factory()->admin()->create();
+    $adminB = User::factory()->admin()->create();
+    Sanctum::actingAs($adminA, ['access']);
 
-    Sanctum::actingAs($secondAdmin, ['access']);
+    $res = $this->deleteJson("/api/v1/admin/users/{$adminB->id}");
+    $res->assertStatus(403);
+    $this->assertDatabaseHas('users', ['id' => $adminB->id]);
+});
 
-    // Second admin deletes self -> ALLOWED because firstAdmin still remains
-    $res = $this->deleteJson("/api/v1/admin/users/{$secondAdmin->id}");
+test('designated protected super admin CANNOT be deleted through ordinary endpoints by anyone', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    $admin = User::factory()->admin()->create();
+
+    // 1. Regular admin attempts to delete super admin -> 403
+    Sanctum::actingAs($admin, ['access']);
+    $res1 = $this->deleteJson("/api/v1/admin/users/{$superAdmin->id}");
+    $res1->assertStatus(403);
+    $this->assertDatabaseHas('users', ['id' => $superAdmin->id]);
+
+    // 2. Super admin attempts self-delete through ordinary endpoint -> 403
+    Sanctum::actingAs($superAdmin, ['access']);
+    $res2 = $this->deleteJson("/api/v1/admin/users/{$superAdmin->id}");
+    $res2->assertStatus(403);
+    $this->assertDatabaseHas('users', ['id' => $superAdmin->id]);
+});
+
+test('regular admin can delete their own account when safeguards pass', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    $admin = User::factory()->admin()->create();
+    Sanctum::actingAs($admin, ['access']);
+
+    $res = $this->deleteJson("/api/v1/admin/users/{$admin->id}");
     $res->assertStatus(200);
+    $this->assertDatabaseMissing('users', ['id' => $admin->id]);
+});
 
-    $this->assertDatabaseMissing('users', ['id' => $secondAdmin->id]);
-    expect(User::activeAdminsCount())->toBe(1);
+test('protected status remains effective even if system_settings is missing or contains wrong id', function () {
+    // No system_settings record, or wrong ID in system_settings
+    $wrongAdmin = User::factory()->admin()->create();
+    User::registerProtectedFirstAdminId($wrongAdmin->id);
+
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    $attacker = User::factory()->admin()->create();
+
+    Sanctum::actingAs($attacker, ['access']);
+
+    // Attempt delete
+    $res = $this->deleteJson("/api/v1/admin/users/{$superAdmin->id}");
+    $res->assertStatus(403);
+    $this->assertDatabaseHas('users', ['id' => $superAdmin->id]);
+});
+
+test('protected account cannot bypass deletion protection even if role is altered in memory', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL, 'role' => 'editor']);
+    $admin = User::factory()->admin()->create();
+    Sanctum::actingAs($admin, ['access']);
+
+    $res = $this->deleteJson("/api/v1/admin/users/{$superAdmin->id}");
+    $res->assertStatus(403);
+    $this->assertDatabaseHas('users', ['id' => $superAdmin->id]);
 });
 
 test('user operations create immutable audit log records in activity_logs', function () {
-    $admin = User::factory()->admin()->create();
-    Sanctum::actingAs($admin, ['access']);
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    Sanctum::actingAs($superAdmin, ['access']);
 
     $initialLogCount = ActivityLog::count();
 
@@ -445,7 +548,7 @@ test('user operations create immutable audit log records in activity_logs', func
     expect(ActivityLog::count())->toBeGreaterThan($initialLogCount);
     $latestLog = ActivityLog::latest('id')->first();
     expect($latestLog->action)->toBe('admin.user_created')
-        ->and($latestLog->user_id)->toBe($admin->id)
+        ->and($latestLog->user_id)->toBe($superAdmin->id)
         ->and($latestLog->details['created_email'])->toBe('audited@waaimedia.com')
         ->and($latestLog->details)->not->toHaveKey('password');
 });

@@ -257,7 +257,7 @@ class EventController extends Controller
     {
         $user = $request->user();
 
-        if (! $user || ! $user->isAdmin()) {
+        if (! $user || ! $user->isAnyAdmin()) {
             return response()->json([
                 'message' => 'Forbidden. Only administrators can permanently delete events.',
             ], 403);

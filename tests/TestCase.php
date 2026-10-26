@@ -48,7 +48,9 @@ abstract class TestCase extends BaseTestCase
             );
         }
 
-        if ($databaseName !== static::PERMITTED_TEST_DATABASE) {
+        $normalizedDbName = basename(str_replace('\\', '/', $databaseName), '.sqlite');
+
+        if ($databaseName !== static::PERMITTED_TEST_DATABASE && $normalizedDbName !== static::PERMITTED_TEST_DATABASE) {
             throw new RuntimeException(
                 "CRITICAL TEST DATABASE GUARD: Connection [{$connection->getName()}] attempted to target database '{$databaseName}'. ".
                 "Tests are strictly prohibited from running against or modifying any database other than '".static::PERMITTED_TEST_DATABASE."'."

@@ -8,12 +8,24 @@ class UpdateUserRoleRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
+     * MANDATORY: Only Super Admin can change roles between admin and editor.
+     * Regular Admins and Editors are strictly forbidden.
+     * Protected Super Admin cannot be demoted through ordinary endpoints.
      */
     public function authorize(): bool
     {
-        $user = $this->user();
+        $actor = $this->user();
 
-        return $user !== null && $user->isAdmin();
+        if (! $actor || ! $actor->isSuperAdmin()) {
+            return false;
+        }
+
+        $targetUser = $this->route('user');
+        if ($targetUser && method_exists($targetUser, 'isProtectedSuperAdmin') && $targetUser->isProtectedSuperAdmin()) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
