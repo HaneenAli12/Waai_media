@@ -2,7 +2,10 @@
 
 use App\Models\ActivityLog;
 use App\Models\User;
+use App\Services\Admin\AdminUserService;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Sanctum\Sanctum;
 
@@ -89,7 +92,7 @@ test('super admin and admin can list users with pagination, search, and role fil
         ->and($searchList->json('data.0.name'))->toBe('Admin Alice');
 });
 
-test('admin can view a single user details', function () {
+test('admin can view an editor user details', function () {
     $admin = User::factory()->admin()->create();
     $editor = User::factory()->editor()->create(['name' => 'Specific User']);
     Sanctum::actingAs($admin, ['access']);
@@ -103,6 +106,32 @@ test('admin can view a single user details', function () {
                 'role' => 'editor',
             ],
         ]);
+});
+
+test('admin CANNOT view another admin or super admin details and receives 403', function () {
+    $admin = User::factory()->admin()->create();
+    $otherAdmin = User::factory()->admin()->create();
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    Sanctum::actingAs($admin, ['access']);
+
+    // Admin attempts to view another admin
+    $res1 = $this->getJson("/api/v1/admin/users/{$otherAdmin->id}");
+    $res1->assertStatus(403);
+
+    // Admin attempts to view the super admin
+    $res2 = $this->getJson("/api/v1/admin/users/{$superAdmin->id}");
+    $res2->assertStatus(403);
+});
+
+test('super admin can view details of admin, editor, and super admin accounts', function () {
+    $superAdmin = User::factory()->superAdmin()->create(['email' => User::DESIGNATED_SUPER_ADMIN_EMAIL]);
+    $admin = User::factory()->admin()->create();
+    $editor = User::factory()->editor()->create();
+    Sanctum::actingAs($superAdmin, ['access']);
+
+    $this->getJson("/api/v1/admin/users/{$admin->id}")->assertStatus(200);
+    $this->getJson("/api/v1/admin/users/{$editor->id}")->assertStatus(200);
+    $this->getJson("/api/v1/admin/users/{$superAdmin->id}")->assertStatus(200);
 });
 
 // =========================================================================
@@ -551,4 +580,49 @@ test('user operations create immutable audit log records in activity_logs', func
         ->and($latestLog->user_id)->toBe($superAdmin->id)
         ->and($latestLog->details['created_email'])->toBe('audited@waaimedia.com')
         ->and($latestLog->details)->not->toHaveKey('password');
+});
+
+// =========================================================================
+// 8. Service-Level Direct Call Protection (Defense-in-Depth)
+// =========================================================================
+
+test('AdminUserService throws AuthorizationException if regular admin directly calls createUser with admin role', function () {
+    $admin = User::factory()->admin()->create();
+    $service = app(AdminUserService::class);
+
+    $req = Request::create('/api/v1/admin/users', 'POST');
+    $req->setUserResolver(fn () => $admin);
+
+    expect(fn () => $service->createUser([
+        'name' => 'Bypassed Admin',
+        'email' => 'bypassed@waaimedia.com',
+        'password' => 'Password123!',
+        'role' => 'admin',
+    ], $req))->toThrow(AuthorizationException::class);
+});
+
+test('AdminUserService throws AuthorizationException if regular admin directly calls updateUser on another admin', function () {
+    $adminA = User::factory()->admin()->create();
+    $adminB = User::factory()->admin()->create();
+    $service = app(AdminUserService::class);
+
+    $req = Request::create("/api/v1/admin/users/{$adminB->id}", 'PUT');
+    $req->setUserResolver(fn () => $adminA);
+
+    expect(fn () => $service->updateUser($adminB, [
+        'name' => 'Tampered Admin',
+        'email' => 'tampered@waaimedia.com',
+    ], $req))->toThrow(AuthorizationException::class);
+});
+
+test('AdminUserService throws AuthorizationException if regular admin directly calls resetPassword on another admin', function () {
+    $adminA = User::factory()->admin()->create();
+    $adminB = User::factory()->admin()->create();
+    $service = app(AdminUserService::class);
+
+    $req = Request::create("/api/v1/admin/users/{$adminB->id}/password", 'PATCH');
+    $req->setUserResolver(fn () => $adminA);
+
+    expect(fn () => $service->resetPassword($adminB, 'HackedPassword123!', $req))
+        ->toThrow(AuthorizationException::class);
 });

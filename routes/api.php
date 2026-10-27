@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ContactInfoController;
 use App\Http\Controllers\Api\CounterController;
 use App\Http\Controllers\Api\EventController;
+use App\Http\Controllers\Api\TeamMemberController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
@@ -104,6 +105,11 @@ Route::get('/contact-info', [ContactInfoController::class, 'index']);
 // =========================================================================
 Route::get('/events', [EventController::class, 'index']);
 Route::get('/events/{slug}', [EventController::class, 'show']);
+
+// =========================================================================
+// Team Members Public Endpoint (Home Page & About Us)
+// =========================================================================
+Route::get('/team-members', [TeamMemberController::class, 'index']);
 
 // =========================================================================
 // App Links Module Endpoints

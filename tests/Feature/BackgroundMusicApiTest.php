@@ -627,4 +627,25 @@ class BackgroundMusicApiTest extends TestCase
         $this->assertTrue($music->is_enabled);
         $this->assertTrue($music->is_loop);
     }
+
+    public function test_super_admin_can_view_and_update_background_music(): void
+    {
+        $superAdmin = User::factory()->superAdmin()->create([
+            'email' => User::DESIGNATED_SUPER_ADMIN_EMAIL,
+        ]);
+        Sanctum::actingAs($superAdmin, ['access']);
+
+        // View
+        $this->getJson('/api/v1/admin/background-music')->assertStatus(200);
+
+        // Update
+        $this->putJson('/api/v1/admin/background-music', [
+            'is_enabled' => true,
+            'is_loop' => false,
+        ])->assertStatus(200);
+
+        $music = Music::instance();
+        $this->assertTrue($music->is_enabled);
+        $this->assertFalse($music->is_loop);
+    }
 }

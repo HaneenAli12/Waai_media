@@ -215,6 +215,11 @@ Updates password while logged in. Revokes all other devices while preserving the
 }
 ```
 
+
+#### Role Restriction
+- **Admins (`super_admin`, `admin`)**: Permitted to update their own password.
+- **Editors (`editor`)**: Strictly forbidden from changing their password (`403 Forbidden`).
+
 #### Success Response (200 OK)
 ```json
 {
@@ -226,11 +231,18 @@ Updates password while logged in. Revokes all other devices while preserving the
 
 ### 3.7 Password Recovery (OTP)
 
+#### Role-Based Policy & Editor Restriction
+- **Admin & Super Admin**: Full self-service password recovery flow via OTP verification.
+- **Editor Accounts**: Editors are strictly forbidden from self-account modification and password recovery.
+  - On `POST /api/v1/auth/forgot-password`, if an email belongs to an `editor`, OTP generation and email dispatch are **silently suppressed**. To prevent account or role enumeration, the endpoint executes constant-time mitigation and returns the exact standard generic success message. *(Note: The identical response means suppression cannot be determined from the API response alone; verify via application activity logs or test instrumentation).*
+  - On `POST /api/v1/auth/verify-otp`, any verification attempt for an `editor` account is rejected with **`422 Unprocessable Content`** (`"Invalid or expired OTP code."`).
+  - On `POST /api/v1/auth/reset-password`, any reset attempt for an `editor` account is rejected with **`422 Unprocessable Content`** (`"Invalid or expired password reset token."`).
+
 #### 1. Forgot Password (Request OTP)
 **Endpoint:** `POST /api/v1/auth/forgot-password`  
 - Preserves approved limits: 4 numeric digits, 90s expiry, 3 verification attempts, 6 sends/hr, 30s resend cooldown.
 - Queues email asynchronously to prevent timing attacks and SMTP delay leakage.
-- Returns identical response for existing and nonexistent emails.
+- Returns identical response for existing, nonexistent, and editor emails.
 
 ```json
 {
@@ -240,7 +252,7 @@ Updates password while logged in. Revokes all other devices while preserving the
 
 #### 2. Verify OTP
 **Endpoint:** `POST /api/v1/auth/verify-otp`  
-Request: `{"email": "user@example.com", "otp": "4821"}`  
+Request: `{"email": "admin@waaimedia.com", "otp": "4821"}`  
 Success Response (200 OK):
 ```json
 {
@@ -255,7 +267,7 @@ Success Response (200 OK):
 Request:
 ```json
 {
-  "email": "user@example.com",
+  "email": "admin@waaimedia.com",
   "reset_token": "64_character_hex_token...",
   "password": "BrandNewPassword123!",
   "password_confirmation": "BrandNewPassword123!"

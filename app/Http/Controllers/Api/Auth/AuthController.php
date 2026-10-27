@@ -437,7 +437,10 @@ class AuthController extends Controller
         try {
             $user = User::where('email', $email)->first();
 
-            if ($user && ! $user->trashed()) {
+            // Editors are strictly prohibited from self-service password recovery / reset.
+            // When an editor email is requested, skip OTP generation silently and perform constant-time mitigation
+            // to avoid exposing role or account existence.
+            if ($user && ! $user->trashed() && ! $user->isEditor()) {
                 $otp = $this->otpService->generateOtp($email);
 
                 $this->activityLogger->log($user->id, 'auth.forgot_password_request', $request, [
@@ -461,7 +464,7 @@ class AuthController extends Controller
                     PasswordResetOtp::where('email', $email)->whereNull('used_at')->delete();
                 }
             } else {
-                // Constant-time mitigation: perform comparable hashing work when user does not exist
+                // Constant-time mitigation: perform comparable hashing work when user does not exist or is an editor
                 hash('sha256', Str::random(40));
 
                 RateLimiter::hit($ipKey, 3600);
@@ -491,6 +494,14 @@ class AuthController extends Controller
             return response()->json(['message' => 'Too many requests. Please try again later.'], 429);
         }
         RateLimiter::hit($ipKey, 3600);
+
+        // Editors are prohibited from obtaining reset tokens
+        $user = User::where('email', $email)->first();
+        if ($user && $user->isEditor()) {
+            return response()->json([
+                'message' => 'Invalid or expired OTP code.',
+            ], 422);
+        }
 
         $result = $this->otpService->verifyOtp($email, $otp);
 
@@ -536,10 +547,10 @@ class AuthController extends Controller
 
         $user = User::where('email', $email)->first();
 
-        if (! $user || $user->trashed()) {
+        if (! $user || $user->trashed() || $user->isEditor()) {
             return response()->json([
-                'message' => 'Unable to locate user for password reset.',
-            ], 404);
+                'message' => 'Invalid or expired password reset token.',
+            ], 422);
         }
 
         $success = DB::transaction(function () use ($otpRecord, $user, $request) {

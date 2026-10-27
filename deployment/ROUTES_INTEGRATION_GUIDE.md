@@ -12,7 +12,7 @@ use App\Http\Controllers\Api\Admin\BackgroundMusicController as AdminBackgroundM
 use App\Http\Controllers\Api\BackgroundMusicController;
 ```
 
-#### B. Inside the `Route::prefix('admin')->middleware(['auth:sanctum', 'require.access', 'role:admin,editor'])->group(...)` block, add:
+#### B. Inside the `Route::prefix('admin')->middleware(['auth:sanctum', 'require.access', 'role:super_admin,admin,editor'])->group(...)` block, add:
 ```php
     // Background Music Module Admin Endpoints
     Route::get('/background-music', [AdminBackgroundMusicController::class, 'show']);

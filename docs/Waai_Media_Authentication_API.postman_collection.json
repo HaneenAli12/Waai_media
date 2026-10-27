@@ -54,6 +54,16 @@
             "key": "remember_token",
             "value": "",
             "type": "string"
+        },
+        {
+            "key": "editor_email",
+            "value": "editor@waaimedia.com",
+            "type": "string"
+        },
+        {
+            "key": "editor_token",
+            "value": "",
+            "type": "string"
         }
     ],
     "item": [
@@ -2385,6 +2395,166 @@
                                     "pm.test('Message indicates access token required', function () {",
                                     "  const data = pm.response.json();",
                                     "  pm.expect(data.message).to.eql('Forbidden. This endpoint requires an access token.');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Forgot Password - Editor Account (Silent OTP Suppression)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"{{editor_email}}\"\n}"
+                        },
+                        "url": "{{base_url}}/api/v1/auth/forgot-password",
+                        "description": "Verifies that requesting password recovery for an Editor account returns the standard generic success response without revealing role, while OTP generation is silently suppressed on the server."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 200 OK\", function () {",
+                                    "  pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test(\"Message matches standard generic notice\", function () {",
+                                    "  const data = pm.response.json();",
+                                    "  pm.expect(data.message).to.eql(\"If an account exists with that email, a password reset code has been sent.\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Verify OTP - Editor Account Rejected (422)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"{{editor_email}}\",\n  \"otp\": \"1234\"\n}"
+                        },
+                        "url": "{{base_url}}/api/v1/auth/verify-otp",
+                        "description": "Verifies that Editor accounts are strictly prohibited from verifying OTP or obtaining a reset token. Backend rejects with 422 Unprocessable Content."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 422 Unprocessable Content\", function () {",
+                                    "  pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Message indicates invalid or expired OTP code\", function () {",
+                                    "  const data = pm.response.json();",
+                                    "  pm.expect(data.message).to.eql(\"Invalid or expired OTP code.\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Change Password - Editor Account Forbidden (403)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{editor_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"current_password\": \"EditorPass123!\",\n  \"password\": \"NewEditorPass456!\",\n  \"password_confirmation\": \"NewEditorPass456!\"\n}"
+                        },
+                        "url": "{{base_url}}/api/v1/auth/change-password",
+                        "description": "Verifies that Editor accounts cannot change their password via authenticated change-password endpoint. Form Request rejects with 403 Forbidden."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 403 Forbidden\", function () {",
+                                    "  pm.response.to.have.status(403);",
+                                    "});",
+                                    "pm.test(\"Message indicates unauthorized action\", function () {",
+                                    "  const data = pm.response.json();",
+                                    "  pm.expect(data.message).to.eql(\"This action is unauthorized.\");",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Reset Password - Editor Account Rejected (422)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"{{editor_email}}\",\n  \"reset_token\": \"1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff\",\n  \"password\": \"NewEditorPassword123!\",\n  \"password_confirmation\": \"NewEditorPassword123!\"\n}"
+                        },
+                        "url": "{{base_url}}/api/v1/auth/reset-password",
+                        "description": "Verifies that Editor accounts cannot execute password resets. Even if a validly structured token is presented, the backend identifies the account as an Editor and rejects the request with 422 Unprocessable Content."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status is 422 Unprocessable Content\", function () {",
+                                    "  pm.response.to.have.status(422);",
+                                    "});",
+                                    "pm.test(\"Message indicates invalid or expired password reset token\", function () {",
+                                    "  const data = pm.response.json();",
+                                    "  pm.expect(data.message).to.eql(\"Invalid or expired password reset token.\");",
                                     "});"
                                 ]
                             }

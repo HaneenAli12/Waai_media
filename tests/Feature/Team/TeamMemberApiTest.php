@@ -578,4 +578,98 @@ class TeamMemberApiTest extends TestCase
 
         Storage::disk('r2')->assertExists($shared->fresh()->photo_path);
     }
+
+    public function test_super_admin_has_full_crud_and_delete_access_to_team_members(): void
+    {
+        $superAdmin = User::factory()->superAdmin()->create([
+            'email' => User::DESIGNATED_SUPER_ADMIN_EMAIL,
+        ]);
+        Sanctum::actingAs($superAdmin, ['access']);
+
+        // 1. Index
+        $this->getJson(self::BASE)->assertStatus(200);
+
+        // 2. Create
+        $createRes = $this->postJson(self::BASE, [
+            'name' => 'Super Admin Team Lead',
+            'position' => 'Chief Operations Officer',
+        ]);
+        $createRes->assertStatus(201);
+        $memberId = $createRes->json('data.id');
+
+        // 3. Update
+        $this->patchJson(self::BASE."/{$memberId}", [
+            'name' => 'Updated Lead Name',
+            'position' => 'Chief Technology Officer',
+        ])->assertStatus(200);
+
+        // 4. Delete
+        $this->deleteJson(self::BASE."/{$memberId}")->assertStatus(200);
+        $this->assertDatabaseMissing('team_members', ['id' => $memberId]);
+    }
+
+    // =========================================================================
+    // 7. Public API (Home Page & About Us)
+    // =========================================================================
+
+    public function test_public_team_members_list_is_accessible_without_authentication(): void
+    {
+        $memberWithPhoto = $this->memberWithPhoto();
+        $memberWithoutPhoto = TeamMember::factory()->create([
+            'name' => 'Sara No Photo',
+            'position' => 'Editor',
+            'photo_path' => null,
+        ]);
+
+        $response = $this->getJson('/api/v1/team-members');
+
+        $response->assertStatus(200)
+            ->assertJsonStructure([
+                'data' => [
+                    '*' => [
+                        'id',
+                        'name',
+                        'position',
+                        'photo_url',
+                        'created_at',
+                        'updated_at',
+                    ],
+                ],
+            ]);
+
+        $data = $response->json('data');
+        $this->assertCount(2, $data);
+
+        // Find the member with photo and check photo_url
+        $withPhotoItem = collect($data)->firstWhere('id', $memberWithPhoto->id);
+        $this->assertNotNull($withPhotoItem);
+        $this->assertStringStartsWith('https://pub-r2.waai.test/team/photos/', $withPhotoItem['photo_url']);
+
+        // Find member without photo and check photo_url is null
+        $withoutPhotoItem = collect($data)->firstWhere('id', $memberWithoutPhoto->id);
+        $this->assertNotNull($withoutPhotoItem);
+        $this->assertNull($withoutPhotoItem['photo_url']);
+    }
+
+    public function test_public_team_members_list_returns_empty_data_array_when_no_members_exist(): void
+    {
+        $response = $this->getJson('/api/v1/team-members');
+
+        $response->assertStatus(200)
+            ->assertExactJson(['data' => []]);
+    }
+
+    public function test_public_team_members_list_is_ordered_consistently_newest_first(): void
+    {
+        $member1 = TeamMember::factory()->create(['name' => 'First Member', 'created_at' => now()->subDays(2)]);
+        $member2 = TeamMember::factory()->create(['name' => 'Second Member', 'created_at' => now()->subDay()]);
+        $member3 = TeamMember::factory()->create(['name' => 'Third Member', 'created_at' => now()]);
+
+        $response = $this->getJson('/api/v1/team-members');
+
+        $response->assertStatus(200);
+        $ids = collect($response->json('data'))->pluck('id')->all();
+
+        $this->assertSame([$member3->id, $member2->id, $member1->id], $ids);
+    }
 }

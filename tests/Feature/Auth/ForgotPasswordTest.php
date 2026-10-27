@@ -30,10 +30,10 @@ test('forgot password returns identical generic response whether email exists or
         ]);
 });
 
-test('forgot password dispatches PasswordResetOtpMail to the correct user', function () {
+test('forgot password dispatches PasswordResetOtpMail to the correct admin user', function () {
     Mail::fake();
 
-    $user = User::factory()->create([
+    $user = User::factory()->admin()->create([
         'email' => 'mailtest@example.com',
     ]);
 
@@ -46,8 +46,8 @@ test('forgot password dispatches PasswordResetOtpMail to the correct user', func
     });
 });
 
-test('forgot password creates 4-digit OTP hashed with HMAC-SHA256 valid for 90 seconds', function () {
-    $user = User::factory()->create([
+test('forgot password creates 4-digit OTP hashed with HMAC-SHA256 valid for 90 seconds for admin', function () {
+    $user = User::factory()->admin()->create([
         'email' => 'otp_user@example.com',
     ]);
 
@@ -61,6 +61,26 @@ test('forgot password creates 4-digit OTP hashed with HMAC-SHA256 valid for 90 s
     expect($otpRecord->expires_at->gt(now()))->toBeTrue();
     // 90 seconds
     expect($otpRecord->expires_at->diffInSeconds(now()))->toBeLessThanOrEqual(90);
+});
+
+test('forgot password silently skips sending OTP for editor accounts and reveals no role information', function () {
+    Mail::fake();
+
+    $editor = User::factory()->editor()->create([
+        'email' => 'editor_nopassword@example.com',
+    ]);
+
+    $response = $this->postJson('/api/v1/auth/forgot-password', [
+        'email' => 'editor_nopassword@example.com',
+    ]);
+
+    $response->assertStatus(200)
+        ->assertJson([
+            'message' => 'If an account exists with that email, a password reset code has been sent.',
+        ]);
+
+    Mail::assertNothingQueued();
+    expect(PasswordResetOtp::where('email', 'editor_nopassword@example.com')->count())->toBe(0);
 });
 
 test('OTP expires after 90 seconds', function () {
@@ -159,7 +179,7 @@ test('resend is rejected during the 30-second cooldown', function () {
 test('resend is allowed after 30 seconds and invalidates previous OTP', function () {
     $email = 'resend_allowed@example.com';
 
-    User::factory()->create(['email' => $email]);
+    User::factory()->admin()->create(['email' => $email]);
 
     // First request
     $this->postJson('/api/v1/auth/forgot-password', [

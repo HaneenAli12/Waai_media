@@ -13,7 +13,7 @@ class StoreTeamMemberRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user !== null && in_array($user->role, ['admin', 'editor'], true);
+        return $user !== null && in_array($user->role, ['super_admin', 'admin', 'editor'], true);
     }
 
     /**

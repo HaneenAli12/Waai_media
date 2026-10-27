@@ -479,4 +479,28 @@ class ContactInfoApiTest extends TestCase
         $this->assertNotEmpty($record->official_email);
         $this->assertNotEmpty($record->complete_address);
     }
+
+    public function test_super_admin_can_view_and_update_contact_info(): void
+    {
+        $superAdmin = User::factory()->superAdmin()->create([
+            'email' => User::DESIGNATED_SUPER_ADMIN_EMAIL,
+        ]);
+        $headers = [
+            'Authorization' => 'Bearer '.$superAdmin->createToken('access_token', ['access'])->plainTextToken,
+        ];
+
+        // View
+        $getResponse = $this->withHeaders($headers)->getJson('/api/v1/admin/contact-info');
+        $getResponse->assertStatus(200);
+
+        // Update
+        $putResponse = $this->withHeaders($headers)->putJson('/api/v1/admin/contact-info', $this->getValidPayload([
+            'official_email' => 'superadmin_contact@waaimedia.com',
+        ]));
+        $putResponse->assertStatus(200);
+
+        $this->assertDatabaseHas('contact_info', [
+            'official_email' => 'superadmin_contact@waaimedia.com',
+        ]);
+    }
 }

@@ -6,7 +6,7 @@ use App\Models\UserSession;
 use App\Services\Auth\OtpService;
 
 test('successful password reset with valid token changes password and revokes all active sessions/tokens', function () {
-    $user = User::factory()->create([
+    $user = User::factory()->admin()->create([
         'email' => 'reset_user@example.com',
         'password' => 'OldPassword1!',
     ]);
@@ -66,7 +66,7 @@ test('successful password reset with valid token changes password and revokes al
 });
 
 test('reset token is single-use and cannot be used twice', function () {
-    $user = User::factory()->create([
+    $user = User::factory()->admin()->create([
         'email' => 'single_use@example.com',
     ]);
 
@@ -99,7 +99,7 @@ test('reset token is single-use and cannot be used twice', function () {
 });
 
 test('reset token expires after 5 minutes', function () {
-    $user = User::factory()->create([
+    $user = User::factory()->admin()->create([
         'email' => 'expired_token@example.com',
     ]);
 
@@ -126,4 +126,38 @@ test('reset token expires after 5 minutes', function () {
         ->assertJson([
             'message' => 'Invalid or expired password reset token.',
         ]);
+});
+
+test('verify-otp and reset-password strictly reject editor accounts', function () {
+    $editor = User::factory()->editor()->create([
+        'email' => 'editor_bypass@example.com',
+    ]);
+
+    $otpService = app(OtpService::class);
+    $plainOtp = $otpService->generateOtp('editor_bypass@example.com');
+
+    // verifyOtp rejection
+    $verifyRes = $this->postJson('/api/v1/auth/verify-otp', [
+        'email' => 'editor_bypass@example.com',
+        'otp' => $plainOtp,
+    ]);
+    $verifyRes->assertStatus(422)
+        ->assertJson(['message' => 'Invalid or expired OTP code.']);
+
+    // Manually inject valid reset_token into database to simulate forged token
+    $fakeResetToken = str_repeat('a', 64);
+    PasswordResetOtp::where('email', 'editor_bypass@example.com')->update([
+        'reset_token_hash' => hash('sha256', $fakeResetToken),
+        'reset_token_expires_at' => now()->addMinutes(10),
+    ]);
+
+    // resetPassword rejection
+    $resetRes = $this->postJson('/api/v1/auth/reset-password', [
+        'email' => 'editor_bypass@example.com',
+        'reset_token' => $fakeResetToken,
+        'password' => 'NewPassword123!',
+        'password_confirmation' => 'NewPassword123!',
+    ]);
+    $resetRes->assertStatus(422)
+        ->assertJson(['message' => 'Invalid or expired password reset token.']);
 });

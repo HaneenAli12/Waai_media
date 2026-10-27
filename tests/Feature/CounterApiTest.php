@@ -239,4 +239,31 @@ class CounterApiTest extends TestCase
         // Ensure edited value was preserved
         $this->assertSame(999, Counter::where('key', 'clients_served')->value('value'));
     }
+
+    public function test_super_admin_can_view_and_update_counters(): void
+    {
+        $superAdmin = User::factory()->superAdmin()->create([
+            'email' => User::DESIGNATED_SUPER_ADMIN_EMAIL,
+        ]);
+        $token = $superAdmin->createToken('access_token', ['access'])->plainTextToken;
+
+        // View
+        $getResponse = $this->withHeader('Authorization', "Bearer {$token}")
+            ->getJson('/api/v1/admin/counters');
+        $getResponse->assertStatus(200)->assertJsonCount(5, 'data');
+
+        // Update
+        $putResponse = $this->withHeader('Authorization', "Bearer {$token}")
+            ->putJson('/api/v1/admin/counters', [
+                'counters' => [
+                    ['key' => 'clients_served', 'value' => 88],
+                ],
+            ]);
+        $putResponse->assertStatus(200);
+
+        $this->assertDatabaseHas('counters', [
+            'key' => 'clients_served',
+            'value' => 88,
+        ]);
+    }
 }

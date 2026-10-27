@@ -14,7 +14,7 @@ class UpdateAppLinksRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user && in_array($user->role, ['admin', 'editor'], true);
+        return $user && in_array($user->role, ['super_admin', 'admin', 'editor'], true);
     }
 
     /**

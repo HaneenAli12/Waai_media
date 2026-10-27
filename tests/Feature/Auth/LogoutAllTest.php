@@ -179,7 +179,7 @@ test('password change revokes other devices but preserves current device session
 });
 
 test('password reset revokes all devices', function () {
-    $user = User::factory()->create(['password' => 'OldPassword123!']);
+    $user = User::factory()->admin()->create(['password' => 'OldPassword123!']);
 
     // Device A
     $loginA = $this->postJson('/api/v1/auth/login', [

@@ -57,9 +57,17 @@ class AdminUserService
         $actor = $request->user();
         $actorId = $actor?->id;
 
+        if (! $actor || ! $actor->isAnyAdmin()) {
+            throw new AuthorizationException('Forbidden. Only administrators can create accounts.');
+        }
+
         // Security assertion: never allow super_admin creation via ordinary endpoints
         if ($data['role'] === 'super_admin') {
             throw new AuthorizationException('Assigning super_admin through ordinary user management is forbidden.');
+        }
+
+        if ($data['role'] === 'admin' && ! $actor->isSuperAdmin()) {
+            throw new AuthorizationException('Forbidden. Regular administrators cannot create admin accounts.');
         }
 
         return DB::transaction(function () use ($data, $request, $actorId) {
@@ -88,11 +96,23 @@ class AdminUserService
      */
     public function updateUser(User $user, array $data, Request $request): User
     {
-        $actorId = $request->user()?->id;
+        $actor = $request->user();
+        $actorId = $actor?->id;
 
-        return DB::transaction(function () use ($user, $data, $request, $actorId) {
+        if (! $actor || ! $actor->isAnyAdmin()) {
+            throw new AuthorizationException('Forbidden. Only administrators can update accounts.');
+        }
+
+        return DB::transaction(function () use ($user, $data, $request, $actor, $actorId) {
             /** @var User $lockedUser */
             $lockedUser = User::where('id', $user->id)->lockForUpdate()->firstOrFail();
+
+            // Regular admin can only update Editor accounts
+            if (! $actor->isSuperAdmin()) {
+                if ($lockedUser->isAnyAdmin()) {
+                    throw new AuthorizationException('Forbidden. Regular administrators can only update editor accounts.');
+                }
+            }
 
             // Protected Super Admin email cannot be modified through ordinary user management
             if ($lockedUser->isProtectedSuperAdmin()) {
@@ -139,14 +159,26 @@ class AdminUserService
      */
     public function resetPassword(User $user, string $newPassword, Request $request): void
     {
-        $actorId = $request->user()?->id;
+        $actor = $request->user();
+        $actorId = $actor?->id;
 
-        DB::transaction(function () use ($user, $newPassword, $request, $actorId) {
+        if (! $actor || ! $actor->isAnyAdmin()) {
+            throw new AuthorizationException('Forbidden. Only administrators can reset passwords.');
+        }
+
+        DB::transaction(function () use ($user, $newPassword, $request, $actor, $actorId) {
             /** @var User $lockedUser */
             $lockedUser = User::where('id', $user->id)->lockForUpdate()->firstOrFail();
 
             if ($lockedUser->isProtectedSuperAdmin()) {
                 throw new AuthorizationException('The protected Super Admin account password cannot be reset via ordinary admin endpoints.');
+            }
+
+            // Regular admin can only reset password of Editor accounts
+            if (! $actor->isSuperAdmin()) {
+                if ($lockedUser->isAnyAdmin()) {
+                    throw new AuthorizationException('Forbidden. Regular administrators can only reset passwords for editor accounts.');
+                }
             }
 
             $lockedUser->update([
@@ -240,7 +272,7 @@ class AdminUserService
 
             // 2. Regular Admin can ONLY delete Editors (and self subject to safeguards)
             if (! $actor->isSuperAdmin()) {
-                if ($lockedUser->isAdmin() && (int) $actor->id !== (int) $lockedUser->id) {
+                if ($lockedUser->isAnyAdmin() && (int) $actor->id !== (int) $lockedUser->id) {
                     throw new AuthorizationException('Regular administrators cannot delete other administrators.');
                 }
             }

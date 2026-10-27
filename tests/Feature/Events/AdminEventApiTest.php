@@ -714,4 +714,35 @@ class AdminEventApiTest extends TestCase
             'name_en' => 'Test Failure Rollback',
         ]);
     }
+
+    public function test_super_admin_has_full_crud_and_publish_access_to_events(): void
+    {
+        $superAdmin = User::factory()->superAdmin()->create([
+            'email' => User::DESIGNATED_SUPER_ADMIN_EMAIL,
+        ]);
+        Sanctum::actingAs($superAdmin, ['access']);
+
+        // 1. Index
+        $this->getJson('/api/v1/admin/events')->assertStatus(200);
+
+        // 2. Create Draft
+        $storeRes = $this->postJson('/api/v1/admin/events', [
+            'name_en' => 'Super Admin Event',
+            'category_en' => 'Technology',
+            'place_en' => 'Digital Center',
+            'description_en' => 'Tech event description.',
+        ]);
+        $storeRes->assertStatus(201);
+        $eventId = $storeRes->json('data.id');
+
+        // 3. Update
+        $this->putJson("/api/v1/admin/events/{$eventId}", [
+            'name_en' => 'Super Admin Event Updated',
+        ])->assertStatus(200);
+
+        // 4. Delete
+        $deleteRes = $this->deleteJson("/api/v1/admin/events/{$eventId}");
+        $deleteRes->assertStatus(200);
+        $this->assertDatabaseMissing('event_calendar', ['id' => $eventId]);
+    }
 }

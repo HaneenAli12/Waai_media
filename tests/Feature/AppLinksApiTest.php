@@ -458,4 +458,25 @@ class AppLinksApiTest extends TestCase
         $this->assertNotEmpty($record->google_app_link);
         $this->assertNotEmpty($record->apple_app_store_link);
     }
+
+    public function test_super_admin_can_update_app_links(): void
+    {
+        $superAdmin = User::factory()->superAdmin()->create([
+            'email' => User::DESIGNATED_SUPER_ADMIN_EMAIL,
+        ]);
+        $headers = [
+            'Authorization' => 'Bearer '.$superAdmin->createToken('access_token', ['access'])->plainTextToken,
+        ];
+
+        $response = $this->withHeaders($headers)->putJson('/api/v1/app-links', [
+            'google_app_link' => 'https://play.google.com/store/apps/details?id=com.waaimedia.super',
+            'apple_app_store_link' => 'https://apps.apple.com/app/waaimedia/id987654321',
+            'app_gallery_link' => 'https://appgallery.huawei.com/app/C12345678',
+        ]);
+        $response->assertStatus(200);
+
+        $this->assertDatabaseHas('app_links', [
+            'google_app_link' => 'https://play.google.com/store/apps/details?id=com.waaimedia.super',
+        ]);
+    }
 }

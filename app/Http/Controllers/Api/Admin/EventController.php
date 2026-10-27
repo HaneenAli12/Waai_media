@@ -40,10 +40,10 @@ class EventController extends Controller
         // Search by event name (case-insensitive search by English name and Arabic name)
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
-            $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search);
+            $escaped = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search);
             $query->where(function ($q) use ($escaped) {
-                $q->where('name_en', 'LIKE', "%{$escaped}%")
-                    ->orWhere('name_ar', 'LIKE', "%{$escaped}%");
+                $q->whereRaw("name_en LIKE ? ESCAPE '!'", ["%{$escaped}%"])
+                    ->orWhereRaw("name_ar LIKE ? ESCAPE '!'", ["%{$escaped}%"]);
             });
         }
 

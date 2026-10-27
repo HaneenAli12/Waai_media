@@ -2,47 +2,48 @@
 
 This document describes the administrative User Management API for the Waai Media backend (Laravel 13 API backend, Angular Admin Dashboard).
 
-The User Management module allows authenticated administrators (`role: admin`) to manage team accounts, assign roles, reset editor passwords, and manage permissions with built-in safety constraints protecting the system's administration continuity.
+The User Management module provides administrative endpoints for managing accounts, roles, and credentials subject to authoritative role-based authorization constraints and permanent protections.
 
 ---
 
 ## 1. Security & Business Rules
 
-### Role-Based Access Control (RBAC)
-- **Admin Only**: All endpoints (`/api/v1/admin/users/*`) require authentication with `role: admin` and a token bearing the `access` ability (`auth:sanctum`, `role:admin`, `require.access`).
-- **Editor Forbidden (403)**: Users with `role: editor` are strictly forbidden from all User Management endpoints and receive `403 Forbidden`.
-- **Unauthenticated (401)**: Requests without a valid Bearer token or with an expired/revoked token receive `401 Unauthorized`.
+### Authoritative Role Hierarchy & Permissions
 
-### First Administrator Ever Created Protection
-- The first administrator account ever created in the database is automatically and permanently recorded in `system_settings` (`first_admin_user_id`).
-- This protected identity remains permanent and immutable even across role changes, soft deletes, or subsequent account creation.
-- **Permanent Delete Guard**: Any attempt to delete the first admin ever created (`DELETE /api/v1/admin/users/{id}`) is rejected with **`403 Forbidden`**:
-  `"The first administrator account ever created in the database is protected and cannot be deleted."`
+#### Super Admin
+- **Full Operational Access**: Has full access to all dashboard modules and administrative operations.
+- **Account Management**: Can view, create, update, delete, and reset passwords for `admin` and `editor` accounts.
+- **Role Assignment**: Only Super Admin can change roles between `admin` and `editor` (`PATCH /api/v1/admin/users/{id}/role`).
+- **Creation Constraint**: Cannot create another Super Admin account through ordinary user-management API endpoints (`super_admin` role assignment is strictly rejected).
+- **Designated Protected Account**: The designated Super Admin account `waaimedia@gmail.com` is permanently protected against deletion, demotion, and email changes through ordinary user-management operations.
 
-### Last Active Administrator Protection
-- The system prevents any operation that would leave zero active administrators in the database.
-- **Demotion Guard**: An admin cannot demote themselves or another admin to `editor` if they are the only remaining active admin. Rejected with **`403 Forbidden`**:
-  `"Cannot delete or demote the last remaining active administrator."`
-- **Deletion Guard**: An admin cannot delete another admin or themselves if that admin is the last active admin remaining. Rejected with **`403 Forbidden`**:
-  `"Cannot delete or demote the last remaining active administrator."`
+#### Admin
+- **Editor Management Only**: Within user management, regular Administrators can manage `editor` accounts only.
+- **No Admin Creation**: Cannot create `admin` accounts (rejected with `403 Forbidden` / `422`).
+- **No Role Assignment**: Cannot change any user's role (rejected with `403 Forbidden`).
+- **Peer & Super Admin Isolation**: Cannot view (`GET /api/v1/admin/users/{id}`), modify (`PUT/PATCH`), delete (`DELETE`), or reset the password (`PATCH /password`) of another `admin` or the `super_admin` account (rejected with `403 Forbidden`).
 
-### Peer Admin Isolation & Self-Service
-- **Profile Updates (`PUT/PATCH /admin/users/{user}`)**:
-  - An Admin can update an Editor's profile (`name`, `email`).
-  - An Admin can update their **own** profile.
-  - An Admin **cannot** update another Admin's profile (rejected with `403 Forbidden`).
-- **Password Resets (`PATCH /admin/users/{user}/password`)**:
-  - An Admin can reset an Editor's password.
-  - An Admin **cannot** reset another Admin's password via Users Management (rejected with `403 Forbidden`).
-  - Admins resetting their own password must use self-service `/api/v1/auth/change-password`.
+#### Editor
+- **Forbidden from User Management**: Users with `role: editor` are strictly forbidden from all User Management endpoints (`/api/v1/admin/users/*`) and receive `403 Forbidden`.
+- **Self-Account Immutability**: Editors cannot modify any aspect of their own account (name, email, role, or password) through any API endpoint, including public password recovery flows.
 
-### Session & Token Invalidation
-- When a user's **role is modified**, all their active sessions and Sanctum tokens across all devices are immediately revoked to enforce new authorization boundaries.
-- When an editor's **password is reset by an admin**, all their active sessions and tokens are immediately revoked.
-- When a user is **deleted**, all their active sessions and tokens are revoked prior to account removal.
+---
 
-### Audit Logging
-- All user creation, modification, role change, password reset, and deletion events are permanently logged in `activity_logs` with the actor ID, IP address, user-agent, and relevant metadata (excluding passwords and sensitive credentials).
+### Protected Super Admin & Safety Constraints
+
+1. **Designated Super Admin Protection (`waaimedia@gmail.com`)**:
+   - The designated Super Admin account is permanently protected at the model, request, and service layers.
+   - Deletion (`DELETE /api/v1/admin/users/{id}`), role demotion (`PATCH /role`), and email changes (`PUT/PATCH`) targeting this account are unconditionally rejected with `403 Forbidden`.
+2. **Last Active Administrator Protection**:
+   - The system prevents any operation that would leave zero active administrators (`super_admin` or `admin`) in the database.
+   - Any deletion or demotion that reduces active administrators below 1 is rejected with `403 Forbidden`:
+     `"Cannot delete or demote the last remaining active administrator."`
+3. **Session & Token Invalidation**:
+   - When a user's role is modified, all active sessions and Sanctum tokens across all devices are immediately revoked.
+   - When an account's password is reset by an administrator, all active sessions and tokens for that user are immediately revoked.
+   - When a user is deleted, all active sessions and tokens are revoked prior to removal.
+4. **Audit Logging**:
+   - All user creation, modification, role change, password reset, and deletion events are permanently logged in `activity_logs` with the actor ID, IP address, user-agent, and relevant metadata.
 
 ---
 
@@ -53,9 +54,9 @@ Exposed safely without password, remember tokens, or internal session fields:
 ```json
 {
   "id": 1,
-  "name": "Jane Doe",
-  "email": "jane@waaimedia.com",
-  "role": "admin",
+  "name": "Super Admin",
+  "email": "waaimedia@gmail.com",
+  "role": "super_admin",
   "created_at": "2026-10-25T10:00:00.000000Z",
   "updated_at": "2026-10-25T10:00:00.000000Z"
 }
@@ -65,15 +66,15 @@ Exposed safely without password, remember tokens, or internal session fields:
 
 ## 3. Endpoint Reference
 
-| Method | URI | Description | Auth Required |
+| Method | URI | Description | Allowed Roles |
 |:---|:---|:---|:---|
-| `GET` | `/api/v1/admin/users` | List dashboard users (paginated, search, filter) | Admin |
-| `POST` | `/api/v1/admin/users` | Create a new user (Admin or Editor) | Admin |
-| `GET` | `/api/v1/admin/users/{user}` | View a single user details | Admin |
-| `PUT`/`PATCH` | `/api/v1/admin/users/{user}` | Update user profile details | Admin (Self or Editor) |
-| `PATCH` | `/api/v1/admin/users/{user}/role` | Change a user's role | Admin (Last-Admin Guarded) |
-| `PATCH` | `/api/v1/admin/users/{user}/password`| Reset an editor's password | Admin (Editor only) |
-| `DELETE` | `/api/v1/admin/users/{user}` | Permanently delete a user | Admin (First/Last Admin Guarded) |
+| `GET` | `/api/v1/admin/users` | List dashboard users (paginated, search, filter) | `super_admin`, `admin` |
+| `POST` | `/api/v1/admin/users` | Create a user account (`editor` for Admin; `admin`/`editor` for Super Admin) | `super_admin` (Admin/Editor), `admin` (Editor only) |
+| `GET` | `/api/v1/admin/users/{user}` | View a single user details | `super_admin` (All), `admin` (Editor only) |
+| `PUT`/`PATCH` | `/api/v1/admin/users/{user}` | Update user profile details | `super_admin` (Admin/Editor), `admin` (Editor only) |
+| `PATCH` | `/api/v1/admin/users/{user}/role` | Change a user's role (`admin` <-> `editor`) | `super_admin` strictly |
+| `PATCH` | `/api/v1/admin/users/{user}/password`| Reset a user's password | `super_admin` (Admin/Editor), `admin` (Editor only) |
+| `DELETE` | `/api/v1/admin/users/{user}` | Permanently delete a user | `super_admin` (Admin/Editor), `admin` (Editor only) |
 
 ---
 
@@ -87,12 +88,12 @@ Retrieves a paginated list of users ordered by creation date descending.
 #### Query Parameters
 - `page` *(optional, integer)*: Page number (default: 1).
 - `per_page` *(optional, integer)*: Items per page (default: 15).
-- `role` *(optional, string)*: Filter by role (`admin` or `editor`).
+- `role` *(optional, string)*: Filter by role (`super_admin`, `admin`, or `editor`).
 - `search` *(optional, string)*: Search substring in `name` or `email` (auto-escaped for SQL LIKE safety).
 
 #### Headers
 ```http
-Authorization: Bearer <admin_access_token>
+Authorization: Bearer <access_token>
 Accept: application/json
 ```
 
@@ -102,7 +103,7 @@ Accept: application/json
   "data": [
     {
       "id": 2,
-      "name": "John Editor",
+      "name": "Jane Editor",
       "email": "editor@waaimedia.com",
       "role": "editor",
       "created_at": "2026-10-25T12:00:00.000000Z",
@@ -111,8 +112,8 @@ Accept: application/json
     {
       "id": 1,
       "name": "Super Admin",
-      "email": "admin@waaimedia.com",
-      "role": "admin",
+      "email": "waaimedia@gmail.com",
+      "role": "super_admin",
       "created_at": "2026-10-25T10:00:00.000000Z",
       "updated_at": "2026-10-25T10:00:00.000000Z"
     }
@@ -127,23 +128,6 @@ Accept: application/json
     "current_page": 1,
     "from": 1,
     "last_page": 1,
-    "links": [
-      {
-        "url": null,
-        "label": "&laquo; Previous",
-        "active": false
-      },
-      {
-        "url": "http://127.0.0.1:8000/api/v1/admin/users?page=1",
-        "label": "1",
-        "active": true
-      },
-      {
-        "url": null,
-        "label": "Next &raquo;",
-        "active": false
-      }
-    ],
     "path": "http://127.0.0.1:8000/api/v1/admin/users",
     "per_page": 15,
     "to": 2,
@@ -157,11 +141,11 @@ Accept: application/json
 ### 4.2 Create User
 **`POST /api/v1/admin/users`**
 
-Creates a new user account (`admin` or `editor`).
+Creates a new user account. Super Admin can create `admin` or `editor`. Regular Admin can create `editor` only.
 
 #### Headers
 ```http
-Authorization: Bearer <admin_access_token>
+Authorization: Bearer <access_token>
 Content-Type: application/json
 Accept: application/json
 ```
@@ -169,7 +153,7 @@ Accept: application/json
 #### Request Body
 ```json
 {
-  "name": "Alice Cooper",
+  "name": "Alice Editor",
   "email": "alice@waaimedia.com",
   "password": "SecurePassword123!",
   "role": "editor"
@@ -179,8 +163,8 @@ Accept: application/json
 #### Validation Rules
 - `name`: Required, string, max: 255.
 - `email`: Required, valid email (`email:rfc,dns`), max: 255, unique in `users` table.
-- `password`: Required, string, min: 8 characters, satisfies Laravel Password defaults.
-- `role`: Required, string, must be one of `admin`, `editor`.
+- `password`: Required, string, min: 8 characters, satisfies Password defaults.
+- `role`: Required, string. For Super Admin: `in:admin,editor`. For Admin: `in:editor`. (`super_admin` is never assignable).
 
 #### Success Response (201 Created)
 ```json
@@ -188,7 +172,7 @@ Accept: application/json
   "message": "User created successfully.",
   "data": {
     "id": 3,
-    "name": "Alice Cooper",
+    "name": "Alice Editor",
     "email": "alice@waaimedia.com",
     "role": "editor",
     "created_at": "2026-10-26T01:00:00.000000Z",
@@ -198,21 +182,18 @@ Accept: application/json
 ```
 
 #### Error Responses
+- **403 Forbidden** (Regular Admin attempting to create an `admin` account):
+  ```json
+  {
+    "message": "Forbidden. Regular administrators cannot create admin accounts."
+  }
+  ```
 - **422 Unprocessable Content** (Duplicate email):
   ```json
   {
     "message": "This email address is already in use.",
     "errors": {
       "email": ["This email address is already in use."]
-    }
-  }
-  ```
-- **422 Unprocessable Content** (Weak password or invalid role):
-  ```json
-  {
-    "message": "The selected role must be either admin or editor.",
-    "errors": {
-      "role": ["The selected role must be either admin or editor."]
     }
   }
   ```
@@ -224,9 +205,13 @@ Accept: application/json
 
 Retrieves a single user's detailed information by ID.
 
+#### Authorization Rules
+- **Super Admin**: Can view details of any account (`super_admin`, `admin`, or `editor`).
+- **Admin**: Can view details of `editor` accounts only. Requesting an `admin` or `super_admin` account returns **`403 Forbidden`**.
+
 #### Headers
 ```http
-Authorization: Bearer <admin_access_token>
+Authorization: Bearer <access_token>
 Accept: application/json
 ```
 
@@ -235,7 +220,7 @@ Accept: application/json
 {
   "data": {
     "id": 2,
-    "name": "John Editor",
+    "name": "Jane Editor",
     "email": "editor@waaimedia.com",
     "role": "editor",
     "created_at": "2026-10-25T12:00:00.000000Z",
@@ -245,23 +230,28 @@ Accept: application/json
 ```
 
 #### Error Responses
-- **404 Not Found**: If user ID does not exist.
+- **403 Forbidden** (Admin attempting to inspect an Admin or Super Admin account):
+  ```json
+  {
+    "message": "This action is unauthorized."
+  }
+  ```
+- **404 Not Found**: If target user ID does not exist.
 
 ---
 
-### 4.4 Update User
+### 4.4 Update User Profile
 **`PUT|PATCH /api/v1/admin/users/{user}`**
 
 Updates profile fields (`name`, `email`, optional `password`).
 
 #### Authorization Rules
-- Admin can update an Editor's account.
-- Admin can update their **own** account.
-- Admin **cannot** update another Admin's account (returns 403 Forbidden).
+- **Super Admin**: Can edit `admin` and `editor` accounts. Protected account `waaimedia@gmail.com` cannot have its email changed.
+- **Admin**: Can edit `editor` accounts only. Attempting to edit an `admin` or `super_admin` account returns **`403 Forbidden`**.
 
 #### Headers
 ```http
-Authorization: Bearer <admin_access_token>
+Authorization: Bearer <access_token>
 Content-Type: application/json
 Accept: application/json
 ```
@@ -269,29 +259,28 @@ Accept: application/json
 #### Request Body
 ```json
 {
-  "name": "Alice Cooper Updated",
-  "email": "alice.updated@waaimedia.com"
+  "name": "Jane Editor Updated",
+  "email": "jane.updated@waaimedia.com"
 }
 ```
-*(Optional field `password`: if provided, updates password and revokes existing sessions).*
 
 #### Success Response (200 OK)
 ```json
 {
   "message": "User updated successfully.",
   "data": {
-    "id": 3,
-    "name": "Alice Cooper Updated",
-    "email": "alice.updated@waaimedia.com",
+    "id": 2,
+    "name": "Jane Editor Updated",
+    "email": "jane.updated@waaimedia.com",
     "role": "editor",
-    "created_at": "2026-10-26T01:00:00.000000Z",
+    "created_at": "2026-10-25T12:00:00.000000Z",
     "updated_at": "2026-10-26T01:10:00.000000Z"
   }
 }
 ```
 
 #### Error Responses
-- **403 Forbidden** (Attempting to modify another Admin):
+- **403 Forbidden** (Admin attempting to edit an Admin or Super Admin account):
   ```json
   {
     "message": "This action is unauthorized."
@@ -303,11 +292,17 @@ Accept: application/json
 ### 4.5 Change User Role
 **`PATCH /api/v1/admin/users/{user}/role`**
 
-Promotes an Editor to Admin or demotes an Admin to Editor. Enforces the last-active-admin guard and immediately invalidates all active sessions/tokens of the target user.
+Promotes an Editor to Admin or demotes an Admin to Editor. Super Admin only.
+
+#### Authorization Rules
+- **Super Admin Strictly**: Only Super Admin can change user roles.
+- **Admin**: Receives **`403 Forbidden`**.
+- **Protected Super Admin Guard**: The designated Super Admin account cannot be demoted (`403 Forbidden`).
+- **Last Active Admin Guard**: An admin cannot be demoted if they are the only remaining active administrator (`403 Forbidden`).
 
 #### Headers
 ```http
-Authorization: Bearer <admin_access_token>
+Authorization: Bearer <super_admin_token>
 Content-Type: application/json
 Accept: application/json
 ```
@@ -324,21 +319,21 @@ Accept: application/json
 {
   "message": "User role updated successfully.",
   "data": {
-    "id": 3,
-    "name": "Alice Cooper",
-    "email": "alice@waaimedia.com",
+    "id": 2,
+    "name": "Jane Editor",
+    "email": "editor@waaimedia.com",
     "role": "admin",
-    "created_at": "2026-10-26T01:00:00.000000Z",
+    "created_at": "2026-10-25T12:00:00.000000Z",
     "updated_at": "2026-10-26T01:15:00.000000Z"
   }
 }
 ```
 
 #### Error Responses
-- **403 Forbidden** (Demoting the last active administrator):
+- **403 Forbidden** (Regular Admin attempting role change):
   ```json
   {
-    "message": "Cannot delete or demote the last remaining active administrator."
+    "message": "This action is unauthorized."
   }
   ```
 
@@ -347,15 +342,15 @@ Accept: application/json
 ### 4.6 Reset User Password (Admin-Managed)
 **`PATCH /api/v1/admin/users/{user}/password`**
 
-Resets an editor's password and immediately revokes all of their active sessions and tokens.
+Resets an account's password and immediately revokes all of their active sessions and tokens across all devices.
 
 #### Authorization Rules
-- Allowed for target user with `role: editor`.
-- Disallowed if target user has `role: admin` (Admin cannot reset peer Admin passwords; returns `403 Forbidden`).
+- **Super Admin**: Can reset passwords for `admin` and `editor` accounts. Cannot reset the protected Super Admin account password via this endpoint (`403 Forbidden`).
+- **Admin**: Can reset passwords for `editor` accounts only. Attempting to reset an `admin` or `super_admin` password returns **`403 Forbidden`**.
 
 #### Headers
 ```http
-Authorization: Bearer <admin_access_token>
+Authorization: Bearer <access_token>
 Content-Type: application/json
 Accept: application/json
 ```
@@ -376,19 +371,10 @@ Accept: application/json
 ```
 
 #### Error Responses
-- **403 Forbidden** (Attempting to reset an Admin's password):
+- **403 Forbidden** (Admin attempting to reset another Admin or Super Admin password):
   ```json
   {
     "message": "This action is unauthorized."
-  }
-  ```
-- **422 Unprocessable Content** (Password confirmation mismatch):
-  ```json
-  {
-    "message": "The password field confirmation does not match.",
-    "errors": {
-      "password": ["The password field confirmation does not match."]
-    }
   }
   ```
 
@@ -399,14 +385,13 @@ Accept: application/json
 
 Permanently deletes a user account after revoking all sessions and tokens.
 
-#### Safety Guards
-1. **First Admin Guard**: If the target user is the first admin ever created, request is rejected with `403 Forbidden`.
-2. **Last Active Admin Guard**: If the target user is the last remaining active admin, request is rejected with `403 Forbidden`.
-3. **Editors**: Can always be safely hard deleted.
+#### Authorization Rules & Safety Guards
+- **Super Admin**: Can delete `admin` and `editor` accounts. Protected account `waaimedia@gmail.com` cannot be deleted (`403 Forbidden`). Cannot delete last remaining active administrator (`403 Forbidden`).
+- **Admin**: Can delete `editor` accounts only. Cannot delete other `admin` or `super_admin` accounts (`403 Forbidden`).
 
 #### Headers
 ```http
-Authorization: Bearer <admin_access_token>
+Authorization: Bearer <access_token>
 Accept: application/json
 ```
 
@@ -418,15 +403,15 @@ Accept: application/json
 ```
 
 #### Error Responses
-- **403 Forbidden** (Deleting first admin ever created):
+- **403 Forbidden** (Deleting designated Super Admin account):
   ```json
   {
-    "message": "The first administrator account ever created in the database is protected and cannot be deleted."
+    "message": "The designated Super Admin account is permanently protected and cannot be deleted."
   }
   ```
-- **403 Forbidden** (Deleting last active admin):
+- **403 Forbidden** (Admin attempting to delete another Administrator):
   ```json
   {
-    "message": "Cannot delete or demote the last remaining active administrator."
+    "message": "Regular administrators cannot delete other administrators."
   }
   ```

@@ -18,7 +18,7 @@ class UpdateBackgroundMusicRequest extends FormRequest
             return false;
         }
 
-        return in_array($user->role, ['admin', 'editor'], true);
+        return in_array($user->role, ['super_admin', 'admin', 'editor'], true);
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\Users\AdminResetPasswordRequest;
 use App\Http\Requests\Admin\Users\IndexUserRequest;
+use App\Http\Requests\Admin\Users\ShowUserRequest;
 use App\Http\Requests\Admin\Users\StoreUserRequest;
 use App\Http\Requests\Admin\Users\UpdateUserRequest;
 use App\Http\Requests\Admin\Users\UpdateUserRoleRequest;
@@ -37,7 +38,7 @@ class UserController extends Controller
     /**
      * Display the specified user.
      */
-    public function show(User $user): JsonResponse
+    public function show(ShowUserRequest $request, User $user): JsonResponse
     {
         return response()->json([
             'data' => new UserAdminResource($user),
