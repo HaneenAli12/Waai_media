@@ -11,7 +11,9 @@ class StoreMusicRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user()?->role === 'admin';
+        $user = $this->user();
+
+        return $user !== null && in_array($user->role, ['super_admin', 'admin'], true);
     }
 
     /**

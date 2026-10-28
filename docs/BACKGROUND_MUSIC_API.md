@@ -45,6 +45,7 @@ The Background Music module manages public playback configuration and administra
 | Role | Public Read (`GET /api/v1/background-music`) | Admin Read (`GET /api/v1/admin/background-music`) | Admin Update (`PUT/POST /api/v1/admin/background-music`) |
 | :--- | :---: | :---: | :---: |
 | **Public / Guest (Unauthenticated)** | `200 OK` | `401 Unauthorized` | `401 Unauthorized` |
+| **Super Admin** (`role: super_admin`) | `200 OK` | `200 OK` | `200 OK` |
 | **Admin** (`role: admin`) | `200 OK` | `200 OK` | `200 OK` |
 | **Editor** (`role: editor`) | `200 OK` | `200 OK` | `200 OK` |
 | **Viewer** (`role: viewer`) | `200 OK` | `403 Forbidden` | `403 Forbidden` |
@@ -53,7 +54,7 @@ The Background Music module manages public playback configuration and administra
 ### Security Middleware Stack (Admin)
 1. `auth:sanctum`: Requires a valid Sanctum Bearer token in the `Authorization` header.
 2. `require.access`: Enforces that only Access Tokens with the `access` ability are accepted.
-3. `role:admin,editor`: Ensures the authenticated user possesses an administrative role (`admin` or `editor`).
+3. `role:super_admin,admin,editor`: Ensures the authenticated user possesses an administrative role (`super_admin`, `admin`, or `editor`).
 
 ---
 
@@ -64,8 +65,8 @@ All routes are prefixed with `/api/v1`.
 | Method | Endpoint | Access Level | Description |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/v1/background-music` | Public (Unauthenticated) | Returns public playback configuration and streaming URL. |
-| `GET` | `/api/v1/admin/background-music` | Admin, Editor | Returns full track metadata, file size, MIME type, and toggles. |
-| `PUT\|PATCH\|POST` | `/api/v1/admin/background-music` | Admin, Editor | Updates toggles or uploads/replaces audio file via `multipart/form-data`. |
+| `GET` | `/api/v1/admin/background-music` | Super Admin, Admin, Editor | Returns full track metadata, file size, MIME type, and toggles. |
+| `PUT\|PATCH\|POST` | `/api/v1/admin/background-music` | Super Admin, Admin, Editor | Updates toggles or uploads/replaces audio file via `multipart/form-data`. |
 
 ---
 
@@ -254,6 +255,7 @@ The collection is located at:
 | :--- | :--- | :--- |
 | `base_url` | `http://127.0.0.1:8000` | Local Laravel API host address. Default points to local `php artisan serve`. |
 | `token` | `""` | Active Bearer token for general requests. |
+| `super_admin_token` | `""` | Sanctum access token for a user with `role: super_admin` and `access` ability. |
 | `admin_token` | `""` | Sanctum access token for a user with `role: admin` and `access` ability. |
 | `editor_token` | `""` | Sanctum access token for a user with `role: editor` and `access` ability. |
 | `viewer_token` | `""` | Sanctum access token for a user with `role: viewer` (tests `403 Forbidden`). |
@@ -268,8 +270,9 @@ The collection is located at:
    php artisan serve --port=8000
    ```
 3. **Obtain Tokens:**
-   - Authenticate via `POST /api/v1/auth/login` using your local admin credentials (`admin@waaimedia.test`) and copy the returned `access_token` into `admin_token`.
-   - Authenticate with an editor account (`editor@waaimedia.test` or `editor1@gmail.com`) and copy the token into `editor_token`.
+   - Authenticate via `POST /api/v1/auth/login` using your local super admin credentials (`waaimedia@gmail.com`) and copy the returned `token` into `super_admin_token`.
+   - Authenticate using your local admin credentials (`admin@waaimedia.test` or `admin@waaimedia.com`) and copy the returned `token` into `admin_token`.
+   - Authenticate with an editor account (`editor@waaimedia.test` or `editor@waaimedia.com`) and copy the token into `editor_token`.
    - Optionally authenticate with a viewer account to populate `viewer_token`.
 4. **Select Local Audio Fixtures in Postman:**
    - For requests in folder **4. Admin Audio Upload & Safe Replacement**:
@@ -295,7 +298,8 @@ All tests run against isolated test database `waai_media_testing` guarded by `Te
 | Test Suite | Command | Tests | Assertions | Result |
 |---|---|:---:|:---:|:---:|
 | **Database Safety Guard** | `php artisan test --filter=TestDatabaseSafetyGuardTest` | 10 | 21 | **PASSED** |
-| **Background Music API** | `php artisan test --filter=BackgroundMusicApiTest --compact` | 23 | 117 | **PASSED** |
-| **Orphan Cleanup Command** | `php artisan test --filter=CleanOrphanedBackgroundMusicCommandTest --compact` | 8 | 20 | **PASSED** |
-| **Code Style (Pint)** | `vendor/bin/pint --test` | — | — | **PASSED** |
+| **Background Music API** | `php artisan test --filter=BackgroundMusicApiTest --compact` | 25 | 150 | **PASSED** |
+| **Background Music Booleans** | `php artisan test --filter=BackgroundMusicBooleanRegressionTest --compact` | 4 | 34 | **PASSED** |
+| **Orphan Cleanup Command** | `php artisan test --filter=CleanOrphanedBackgroundMusicCommandTest --compact` | 20 | 76 | **PASSED** |
+| **Code Style (Pint)** | `vendor/bin/pint --dirty --format agent` | — | — | **PASSED** |
 

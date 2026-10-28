@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Requests\Admin\Music\StoreMusicRequest;
 use App\Models\Music;
 use App\Models\User;
 use App\Services\Storage\AudioStorageService;
@@ -635,17 +636,101 @@ class BackgroundMusicApiTest extends TestCase
         ]);
         Sanctum::actingAs($superAdmin, ['access']);
 
-        // View
-        $this->getJson('/api/v1/admin/background-music')->assertStatus(200);
+        // 1. View settings
+        $this->getJson('/api/v1/admin/background-music')
+            ->assertStatus(200)
+            ->assertJsonStructure([
+                'data' => [
+                    'id',
+                    'has_track',
+                    'file_name',
+                    'file_url',
+                    'file_size',
+                    'mime_type',
+                    'is_enabled',
+                    'is_loop',
+                    'updated_at',
+                ],
+            ]);
 
-        // Update
+        // 2. Update settings without file
         $this->putJson('/api/v1/admin/background-music', [
             'is_enabled' => true,
             'is_loop' => false,
-        ])->assertStatus(200);
+        ])->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'is_enabled' => true,
+                    'is_loop' => false,
+                ],
+            ]);
 
         $music = Music::instance();
         $this->assertTrue($music->is_enabled);
         $this->assertFalse($music->is_loop);
+
+        // 3. Upload initial audio track
+        $firstTrack = $this->createValidMp3File('super_admin_initial.mp3');
+        $this->postJson('/api/v1/admin/background-music', [
+            'audio_file' => $firstTrack,
+            'is_enabled' => true,
+            'is_loop' => true,
+        ])->assertStatus(200)
+            ->assertJsonPath('data.has_track', true)
+            ->assertJsonPath('data.file_name', 'super_admin_initial.mp3')
+            ->assertJsonPath('data.is_enabled', true)
+            ->assertJsonPath('data.is_loop', true);
+
+        $music->refresh();
+        $firstKey = $music->file_path;
+        $this->assertNotNull($firstKey);
+        Storage::disk('r2')->assertExists($firstKey);
+
+        // 4. Replace audio track and toggle settings
+        $replacementTrack = $this->createValidWavFile('super_admin_replacement.wav');
+        $this->postJson('/api/v1/admin/background-music', [
+            'audio_file' => $replacementTrack,
+            'is_enabled' => false,
+            'is_loop' => false,
+        ])->assertStatus(200)
+            ->assertJsonPath('data.has_track', true)
+            ->assertJsonPath('data.file_name', 'super_admin_replacement.wav')
+            ->assertJsonPath('data.is_enabled', false)
+            ->assertJsonPath('data.is_loop', false);
+
+        $music->refresh();
+        $secondKey = $music->file_path;
+        $this->assertNotEquals($firstKey, $secondKey);
+        Storage::disk('r2')->assertMissing($firstKey);
+        Storage::disk('r2')->assertExists($secondKey);
+    }
+
+    public function test_store_music_request_authorizes_super_admin_and_admin_equally(): void
+    {
+        $superAdmin = User::factory()->superAdmin()->make();
+        $admin = User::factory()->admin()->make();
+        $editor = User::factory()->editor()->make();
+        $viewer = User::factory()->make(['role' => 'viewer']);
+
+        $superAdminRequest = new StoreMusicRequest;
+        $superAdminRequest->setUserResolver(fn () => $superAdmin);
+        $this->assertTrue($superAdminRequest->authorize());
+
+        $adminRequest = new StoreMusicRequest;
+        $adminRequest->setUserResolver(fn () => $admin);
+        $this->assertTrue($adminRequest->authorize());
+
+        $editorRequest = new StoreMusicRequest;
+        $editorRequest->setUserResolver(fn () => $editor);
+        $this->assertFalse($editorRequest->authorize());
+
+        $viewerRequest = new StoreMusicRequest;
+        $viewerRequest->setUserResolver(fn () => $viewer);
+        $this->assertFalse($viewerRequest->authorize());
+
+        $unauthRequest = new StoreMusicRequest;
+        $unauthRequest->setUserResolver(fn () => null);
+        $this->assertFalse($unauthRequest->authorize());
     }
 }

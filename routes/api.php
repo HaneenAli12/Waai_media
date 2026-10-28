@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\BackgroundMusicController as AdminBackgroundMusicController;
+use App\Http\Controllers\Api\Admin\ClientController as AdminClientController;
 use App\Http\Controllers\Api\Admin\EventController as AdminEventController;
 use App\Http\Controllers\Api\Admin\TeamMemberController as AdminTeamMemberController;
 use App\Http\Controllers\Api\Admin\UserController as AdminUserController;
@@ -8,6 +9,7 @@ use App\Http\Controllers\Api\AppLinkController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\BackgroundMusicController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\ContactInfoController;
 use App\Http\Controllers\Api\CounterController;
 use App\Http\Controllers\Api\EventController;
@@ -72,6 +74,14 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'require.access', 'role:supe
     Route::delete('/team-members/{teamMember}', [AdminTeamMemberController::class, 'destroy'])
         ->middleware('role:super_admin,admin');
 
+    // Clients Management Module Admin Endpoints (POST is accepted on update for multipart logo uploads)
+    Route::get('/clients', [AdminClientController::class, 'index']);
+    Route::post('/clients', [AdminClientController::class, 'store']);
+    Route::get('/clients/{client}', [AdminClientController::class, 'show']);
+    Route::match(['put', 'patch', 'post'], '/clients/{client}', [AdminClientController::class, 'update']);
+    Route::delete('/clients/{client}', [AdminClientController::class, 'destroy'])
+        ->middleware('role:super_admin,admin');
+
     // Background Music Module Admin Endpoints
     Route::get('/background-music', [AdminBackgroundMusicController::class, 'show']);
     Route::match(['put', 'patch', 'post'], '/background-music', [AdminBackgroundMusicController::class, 'update']);
@@ -110,6 +120,11 @@ Route::get('/events/{slug}', [EventController::class, 'show']);
 // Team Members Public Endpoint (Home Page & About Us)
 // =========================================================================
 Route::get('/team-members', [TeamMemberController::class, 'index']);
+
+// =========================================================================
+// Clients Public Endpoint (Home Page)
+// =========================================================================
+Route::get('/clients', [ClientController::class, 'index']);
 
 // =========================================================================
 // App Links Module Endpoints

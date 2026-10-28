@@ -2,7 +2,7 @@
     "info": {
         "_postman_id": "b3e9a712-4f81-4b72-8812-7f91a0c43912",
         "name": "Waai Media - Background Music API",
-        "description": "Comprehensive, fully testable Postman Collection for the Waai Media Background Music Module API (Laravel 13 backend).\n\n### Overview:\nThe Background Music module manages public playback settings (`is_enabled`, `is_loop`, `audio_url`) and authenticated track uploads/replacements via Cloudflare R2 object storage.\n\n### Endpoints:\n- `GET /api/v1/background-music` (Public playback configuration, unauthenticated)\n- `GET /api/v1/admin/background-music` (Admin & Editor track & toggle inspector)\n- `PUT /api/v1/admin/background-music` (Admin & Editor toggle & track update/replacement)\n- `POST /api/v1/admin/background-music` (Alternative method for multipart form-data uploads)\n\n### Authorization Rules:\n- Public GET is unauthenticated.\n- Admin endpoints require `auth:sanctum`, `require.access`, and `role:admin,editor`.\n- `admin` and `editor` roles are authorized.\n- `viewer` and other unauthorized roles receive `403 Forbidden`.\n- Requests missing a Bearer token or presenting an invalid/revoked token receive `401 Unauthorized`.\n\n### Supported Audio Formats (Max 15 MiB):\n- Supports all genuine audio formats (MP3, WAV, OGG, M4A, AAC, FLAC, OPUS, AIFF, WMA, etc.) detected via content inspection.\n- Non-audio files disguised with an audio extension are strictly rejected with `422 Unprocessable Content`.\n- Files exceeding 15 MiB (15,360 KB) are strictly rejected with `422 Unprocessable Content`.\n\n### Postman Variables:\n- `base_url`: Target host (default: `http://127.0.0.1:8000`).\n- `admin_token`: Sanctum token with `role: admin` and `access` ability.\n- `editor_token`: Sanctum token with `role: editor` and `access` ability.\n- `token`: Shared active token (defaults to `{{admin_token}}`).\n- `viewer_token`: Sanctum token with `role: viewer` (tests 403 Forbidden).\n- `invalid_token`: Revoked or malformed token placeholder (tests 401 Unauthorized).",
+        "description": "Comprehensive, fully testable Postman Collection for the Waai Media Background Music Module API (Laravel 13 backend).\n\n### Overview:\nThe Background Music module manages public playback settings (`is_enabled`, `is_loop`, `audio_url`) and authenticated track uploads/replacements via Cloudflare R2 object storage.\n\n### Endpoints:\n- `GET /api/v1/background-music` (Public playback configuration, unauthenticated)\n- `GET /api/v1/admin/background-music` (Super Admin, Admin & Editor track & toggle inspector)\n- `PUT /api/v1/admin/background-music` (Super Admin, Admin & Editor toggle & track update/replacement)\n- `POST /api/v1/admin/background-music` (Alternative method for multipart form-data uploads)\n\n### Authorization Rules:\n- Public GET is unauthenticated.\n- Admin endpoints require `auth:sanctum`, `require.access`, and `role:super_admin,admin,editor`.\n- `super_admin`, `admin`, and `editor` roles are authorized.\n- `viewer` and other unauthorized roles receive `403 Forbidden`.\n- Requests missing a Bearer token or presenting an invalid/revoked token receive `401 Unauthorized`.\n\n### Supported Audio Formats (Max 15 MiB):\n- Supports all genuine audio formats (MP3, WAV, OGG, M4A, AAC, FLAC, OPUS, AIFF, WMA, etc.) detected via content inspection.\n- Non-audio files disguised with an audio extension are strictly rejected with `422 Unprocessable Content`.\n- Files exceeding 15 MiB (15,360 KB) are strictly rejected with `422 Unprocessable Content`.\n\n### Postman Variables:\n- `base_url`: Target host (default: `http://127.0.0.1:8000`).\n- `super_admin_token`: Sanctum token with `role: super_admin` and `access` ability.\n- `admin_token`: Sanctum token with `role: admin` and `access` ability.\n- `editor_token`: Sanctum token with `role: editor` and `access` ability.\n- `token`: Shared active token (defaults to `{{admin_token}}`).\n- `viewer_token`: Sanctum token with `role: viewer` (tests 403 Forbidden).\n- `invalid_token`: Revoked or malformed token placeholder (tests 401 Unauthorized).",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "variable": [
@@ -13,6 +13,11 @@
         },
         {
             "key": "token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "super_admin_token",
             "value": "",
             "type": "string"
         },
@@ -156,6 +161,57 @@
         {
             "name": "2. Admin Authentication & Role Authorization",
             "item": [
+                {
+                    "name": "2.0 Admin - GET Settings (Super Admin Role - 200 OK)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{super_admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Retrieves the full background music settings and track metadata for an authenticated Super Admin."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK for Super Admin', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Admin Resource schema is valid', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res).to.have.property('data');",
+                                    "    var data = res.data;",
+                                    "    pm.expect(data).to.have.property('id');",
+                                    "    pm.expect(data).to.have.property('has_track');",
+                                    "    pm.expect(data).to.have.property('file_name');",
+                                    "    pm.expect(data).to.have.property('file_url');",
+                                    "    pm.expect(data).to.have.property('file_size');",
+                                    "    pm.expect(data).to.have.property('mime_type');",
+                                    "    pm.expect(data).to.have.property('is_enabled');",
+                                    "    pm.expect(data).to.have.property('is_loop');",
+                                    "    pm.expect(data).to.have.property('updated_at');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
                 {
                     "name": "2.1 Admin - GET Settings (Admin Role - 200 OK)",
                     "request": {
@@ -657,6 +713,63 @@
                                     "});",
                                     "pm.test('Setting updated successfully by editor', function () {",
                                     "    pm.expect(pm.response.json().data.is_enabled).to.eql(true);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "3.5 Admin - Super Admin Role Can Update Settings (200 OK)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{super_admin_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "is_enabled",
+                                    "value": "true",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "is_loop",
+                                    "value": "true",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/background-music",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "v1", "admin", "background-music"]
+                        },
+                        "description": "Confirms that an authenticated Super Admin has identical authorization to Admin to update background music settings."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('Status code is 200 OK for Super Admin update', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "pm.test('Settings updated successfully by Super Admin', function () {",
+                                    "    var res = pm.response.json();",
+                                    "    pm.expect(res.success).to.eql(true);",
+                                    "    pm.expect(res.data.is_enabled).to.eql(true);",
+                                    "    pm.expect(res.data.is_loop).to.eql(true);",
                                     "});"
                                 ]
                             }

@@ -36,3 +36,11 @@ Schedule::command('events:clean-orphaned-covers --force --grace-hours=24 --max-d
     ->weeklyOn(1, '03:30') // Every Monday at 03:30 AM (30 minutes after the music cleanup)
     ->withoutOverlapping(120)
     ->runInBackground();
+
+// Weekly orphaned client logo cleanup (clients/logos/ in R2). Same reviewed safe mode as the other modules:
+// --force, 24h minimum age, capped deletions, wrong-database abort, atomic lock + withoutOverlapping().
+// Review candidates first with: php artisan clients:clean-orphaned-logos --dry-run
+Schedule::command('clients:clean-orphaned-logos --force --grace-hours=24 --max-deletions=50')
+    ->weeklyOn(1, '04:30') // Every Monday at 04:30 AM (after the team photos cleanup)
+    ->withoutOverlapping(120)
+    ->runInBackground();
