@@ -44,3 +44,11 @@ Schedule::command('clients:clean-orphaned-logos --force --grace-hours=24 --max-d
     ->weeklyOn(1, '04:30') // Every Monday at 04:30 AM (after the team photos cleanup)
     ->withoutOverlapping(120)
     ->runInBackground();
+
+// Weekly orphaned news image cleanup (news/covers/ and news/editor/ in R2). Same reviewed safe mode:
+// --force, 24h minimum age, capped deletions, wrong-database abort, atomic lock + withoutOverlapping().
+// Review candidates first with: php artisan news:clean-orphaned-images --dry-run
+Schedule::command('news:clean-orphaned-images --force --grace-hours=24 --max-deletions=50')
+    ->weeklyOn(1, '05:00') // Every Monday at 05:00 AM (after the client logos cleanup)
+    ->withoutOverlapping(120)
+    ->runInBackground();

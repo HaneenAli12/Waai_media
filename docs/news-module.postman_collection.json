@@ -1,0 +1,2706 @@
+{
+    "info": {
+        "_postman_id": "a7f3c841-9d2e-46b8-8e52-3f91b4c2d810",
+        "name": "Waai Media - News Module API",
+        "description": "Comprehensive Postman v2.1 API test collection for the Waai Media News Module (`/api/v1`).\n\n### Prerequisites for Local Testing\n1. Start the local Laravel server (`php artisan serve`).\n2. Ensure news categories are seeded (`php artisan db:seed --class=CategorySeeder`).\n3. Set `admin_email`, `admin_password`, `editor_email`, and `editor_password` in the Collection Variables (or your active Postman Environment) using local test accounts.\n4. Run **Folder 2 (Authentication / Admin Setup)** first to populate `{{admin_token}}`, `{{editor_token}}`, `{{category_id}}`, `{{entertainment_parent_id}}`, and `{{celebrities_category_id}}`.\n5. For **Folder 3 (Image Management)**, select a local `.jpg`, `.png`, or `.webp` file (`<= 10 MB`) in the `image` form-data field before sending.\n\n### Safety Notes\n- No real credentials or production secrets are included.\n- Destructive permanent deletion (`DELETE /api/v1/admin/news/{{delete_target_news_id}}`) is guarded by a pre-request check (`run_destructive_delete = \"true\"`) so it is automatically skipped during a full Collection Runner execution unless explicitly enabled.\n- Orphaned R2/DB image cleanup (`php artisan news:clean-orphaned-images`) is an Artisan CLI command and is documented in **Folder 8** (no HTTP endpoint exists).",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "1. Public News & Categories",
+            "description": "Publicly accessible News endpoints (`/api/v1/news`). No authentication required. Only `published` articles are returned; `draft` articles return `404 Not Found`.",
+            "item": [
+                {
+                    "name": "Get Latest Homepage News (Default Limit 3)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Response contains data array with at most 3 items', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData).to.have.property('data');",
+                                    "    pm.expect(jsonData.data).to.be.an('array');",
+                                    "    pm.expect(jsonData.data.length).to.be.at.most(3);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Accept-Language",
+                                "value": "en",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/news/latest?limit=3",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "news",
+                                "latest"
+                            ],
+                            "query": [
+                                {
+                                    "key": "limit",
+                                    "value": "3",
+                                    "description": "Number of latest published articles to return (1-100, default: 3)"
+                                },
+                                {
+                                    "key": "category",
+                                    "value": "events",
+                                    "description": "Optional category slug filter (e.g. events, entertainment)",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "category_id",
+                                    "value": "{{category_id}}",
+                                    "description": "Optional category ID filter",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Returns the latest published news articles ordered by `published_at DESC`, `id DESC` (`NewsPublicResource` collection without pagination metadata)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Published News (Paginated - English)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Response has paginated data, links, and meta', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData).to.have.property('data');",
+                                    "    pm.expect(jsonData.data).to.be.an('array');",
+                                    "    pm.expect(jsonData).to.have.property('links');",
+                                    "    pm.expect(jsonData).to.have.property('meta');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Accept-Language",
+                                "value": "en",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/news?per_page=10&page=1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "news"
+                            ],
+                            "query": [
+                                {
+                                    "key": "per_page",
+                                    "value": "10",
+                                    "description": "Items per page (1-100, default: 10)"
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1",
+                                    "description": "Page number (min: 1)"
+                                },
+                                {
+                                    "key": "category",
+                                    "value": "entertainment",
+                                    "description": "Optional category slug filter (parent 'entertainment' expands to its 4 subcategories)",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "category_id",
+                                    "value": "{{category_id}}",
+                                    "description": "Optional category ID filter",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Returns a paginated list of published news articles ordered by `published_at DESC`, `id DESC`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Published News (Localized - Arabic Accept-Language)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Response contains data array', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData).to.have.property('data');",
+                                    "    pm.expect(jsonData.data).to.be.an('array');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Accept-Language",
+                                "value": "ar",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/news?per_page=10",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "news"
+                            ],
+                            "query": [
+                                {
+                                    "key": "per_page",
+                                    "value": "10"
+                                }
+                            ]
+                        },
+                        "description": "Verifies locale negotiation via `Accept-Language: ar` so convenience fields (`title`, `author_name`, `short_description`, `content`, `category.name`) resolve in Arabic while preserving full `_ar` and `_en` fields."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Single Published News Article by Slug",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK or 404 if not yet published', function () {",
+                                    "    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+                                    "});",
+                                    "",
+                                    "if (pm.response.code === 200) {",
+                                    "    pm.test('Published article payload includes bilingual fields, slug, and featured image', function () {",
+                                    "        const data = pm.response.json().data;",
+                                    "        pm.expect(data).to.have.property('id');",
+                                    "        pm.expect(data).to.have.property('slug');",
+                                    "        pm.expect(data).to.have.property('title_ar');",
+                                    "        pm.expect(data).to.have.property('title_en');",
+                                    "        pm.expect(data).to.have.property('content_ar');",
+                                    "        pm.expect(data).to.have.property('content_en');",
+                                    "        pm.expect(data).to.have.property('featured_image_url');",
+                                    "        pm.expect(data).to.have.property('published_at');",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Accept-Language",
+                                "value": "en",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/news/{{news_slug}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "news",
+                                "{{news_slug}}"
+                            ]
+                        },
+                        "description": "Retrieves a single published news article by its `slug` or numeric `id`. Returns `404 Not Found` if the article is currently a `draft` or does not exist."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Shared News Categories (Set {{category_id}} & Hierarchy IDs)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const jsonData = pm.response.json();",
+                                    "pm.test('Categories data array is returned', function () {",
+                                    "    pm.expect(jsonData).to.have.property('data');",
+                                    "    pm.expect(jsonData.data).to.be.an('array').that.is.not.empty;",
+                                    "});",
+                                    "",
+                                    "if (jsonData && Array.isArray(jsonData.data)) {",
+                                    "    const leafCategory = jsonData.data.find(c => c.slug !== 'entertainment' && (!c.children || c.children.length === 0));",
+                                    "    if (leafCategory) {",
+                                    "        pm.collectionVariables.set('category_id', String(leafCategory.id));",
+                                    "    }",
+                                    "    const entertainment = jsonData.data.find(c => c.slug === 'entertainment');",
+                                    "    if (entertainment) {",
+                                    "        pm.collectionVariables.set('entertainment_parent_id', String(entertainment.id));",
+                                    "        if (Array.isArray(entertainment.children) && entertainment.children.length > 0) {",
+                                    "            const celebrities = entertainment.children.find(ch => ch.slug === 'celebrities') || entertainment.children[0];",
+                                    "            pm.collectionVariables.set('celebrities_category_id', String(celebrities.id));",
+                                    "        }",
+                                    "    }",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/categories?type=news",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "categories"
+                            ],
+                            "query": [
+                                {
+                                    "key": "type",
+                                    "value": "news",
+                                    "description": "Filter shared categories to type=news"
+                                }
+                            ]
+                        },
+                        "description": "Fetches all top-level News categories and their nested `children` (`entertainment` -> `celebrities`, `in-theaters`, `tv-shows`, `book-reviews`). Automatically sets:\n- `{{category_id}}` (leaf category ID, e.g., `health`)\n- `{{entertainment_parent_id}}` (`entertainment` organizational parent ID)\n- `{{celebrities_category_id}}` (`celebrities` child category ID)"
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "2. Image Management",
+            "description": "Uploads featured cover images and rich-text editor images to Cloudflare R2 (`POST /api/v1/admin/news/images`).\n\n**Note:** Before sending these requests in Postman, select a local `.jpg`, `.jpeg`, `.png`, or `.webp` image file (`<= 10 MB`) in the `image` form-data field.",
+            "item": [
+                {
+                    "name": "Upload Featured Cover Image (Set {{image_id}} & {{image_url}})",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 201 Created', function () {",
+                                    "    pm.response.to.have.status(201);",
+                                    "});",
+                                    "",
+                                    "const jsonData = pm.response.json();",
+                                    "pm.test('Upload response contains success=true and data.{id, url}', function () {",
+                                    "    pm.expect(jsonData).to.have.property('success', true);",
+                                    "    pm.expect(jsonData).to.have.property('data');",
+                                    "    pm.expect(jsonData.data).to.have.property('id');",
+                                    "    pm.expect(jsonData.data).to.have.property('url');",
+                                    "});",
+                                    "",
+                                    "if (jsonData && jsonData.data) {",
+                                    "    pm.collectionVariables.set('image_id', String(jsonData.data.id));",
+                                    "    pm.collectionVariables.set('image_url', jsonData.data.url);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "image",
+                                    "description": "Select a local JPEG, PNG, or WebP image file (max 10 MB, min 1x1, max 8000x8000)",
+                                    "type": "file",
+                                    "src": []
+                                },
+                                {
+                                    "key": "type",
+                                    "value": "featured",
+                                    "description": "Allowed values: featured, cover, editor (defaults to editor if omitted)",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/images",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "images"
+                            ]
+                        },
+                        "description": "Uploads a featured cover image to Cloudflare R2 (`news/covers/<uuid>.<ext>`) and saves `{{image_id}}` and `{{image_url}}`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Upload Editor Inline Image (Set {{editor_image_id}} & {{editor_image_url}})",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 201 Created', function () {",
+                                    "    pm.response.to.have.status(201);",
+                                    "});",
+                                    "",
+                                    "const jsonData = pm.response.json();",
+                                    "pm.test('Upload response contains success=true and data.{id, url}', function () {",
+                                    "    pm.expect(jsonData).to.have.property('success', true);",
+                                    "    pm.expect(jsonData).to.have.property('data');",
+                                    "    pm.expect(jsonData.data).to.have.property('id');",
+                                    "    pm.expect(jsonData.data).to.have.property('url');",
+                                    "});",
+                                    "",
+                                    "if (jsonData && jsonData.data) {",
+                                    "    pm.collectionVariables.set('editor_image_id', String(jsonData.data.id));",
+                                    "    pm.collectionVariables.set('editor_image_url', jsonData.data.url);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "image",
+                                    "description": "Select a local JPEG, PNG, or WebP image file (max 10 MB)",
+                                    "type": "file",
+                                    "src": []
+                                },
+                                {
+                                    "key": "type",
+                                    "value": "editor",
+                                    "description": "Stores under news/editor/<uuid>.<ext>",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/images",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "images"
+                            ]
+                        },
+                        "description": "Uploads a rich-text editor image (`type=editor`) to Cloudflare R2 and stores `{{editor_image_id}}` and `{{editor_image_url}}` for embedding in `content_ar` and `content_en`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Upload Unattached Admin Image (For Cross-User Ownership Test)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 201 Created', function () {",
+                                    "    pm.response.to.have.status(201);",
+                                    "});",
+                                    "",
+                                    "const jsonData = pm.response.json();",
+                                    "if (jsonData && jsonData.data) {",
+                                    "    pm.collectionVariables.set('admin_unattached_image_id', String(jsonData.data.id));",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "image",
+                                    "description": "Select a local JPEG, PNG, or WebP image file",
+                                    "type": "file",
+                                    "src": []
+                                },
+                                {
+                                    "key": "type",
+                                    "value": "featured",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/images",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "images"
+                            ]
+                        },
+                        "description": "Uploads an unattached image owned by the Admin user and stores `{{admin_unattached_image_id}}` so Folder 7 can verify that an `editor` cannot hijack another user's unattached image."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "3. Admin News Management",
+            "description": "Covers draft creation (English-only and Arabic-only), retrieving articles for editing, full and partial updates, featured image assignment/removal, multipart `_method=PATCH` updates, and HTML sanitization verification.",
+            "item": [
+                {
+                    "name": "Create News Draft (English Title Only -> Set {{news_id}} & {{news_slug}})",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 201 Created', function () {",
+                                    "    pm.response.to.have.status(201);",
+                                    "});",
+                                    "",
+                                    "const jsonData = pm.response.json();",
+                                    "pm.test('Draft created with standardized NewsAdminResource structure, slug, and excluded redundant fields', function () {",
+                                    "    pm.expect(jsonData).to.have.property('data');",
+                                    "    const data = jsonData.data;",
+                                    "    pm.expect(data.status).to.eql('draft');",
+                                    "    pm.expect(data.published_at).to.be.null;",
+                                    "    pm.expect(data.slug).to.be.a('string').and.not.empty;",
+                                    "    pm.expect(data.title_ar).to.be.null;",
+                                    "    pm.expect(data.title_en).to.eql('Waai Media Launches Regional Creative Summit');",
+                                    "    pm.expect(data).to.have.property('category');",
+                                    "    pm.expect(data.category).to.have.property('id');",
+                                    "    pm.expect(data.category).to.have.property('name_ar');",
+                                    "    pm.expect(data.category).to.have.property('name_en');",
+                                    "    pm.expect(data.category).to.have.property('parent_id');",
+                                    "    pm.expect(data.category).to.have.property('parent');",
+                                    "    pm.expect(data).to.have.property('featured_image_id', null);",
+                                    "    pm.expect(data).to.have.property('featured_image_url', null);",
+                                    "    pm.expect(data).to.have.property('editor_images');",
+                                    "    pm.expect(data).to.not.have.property('title');",
+                                    "    pm.expect(data).to.not.have.property('author_name');",
+                                    "    pm.expect(data).to.not.have.property('short_description');",
+                                    "    pm.expect(data).to.not.have.property('category_name_ar');",
+                                    "    pm.expect(data).to.not.have.property('category_name_en');",
+                                    "    pm.expect(data).to.not.have.property('featured_image');",
+                                    "});",
+                                    "",
+                                    "if (jsonData && jsonData.data) {",
+                                    "    pm.collectionVariables.set('news_id', String(jsonData.data.id));",
+                                    "    pm.collectionVariables.set('news_slug', jsonData.data.slug);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"category_id\": {{category_id}},\n    \"title_en\": \"Waai Media Launches Regional Creative Summit\",\n    \"short_description_en\": \"Initial draft summary for the upcoming creative summit.\",\n    \"status\": \"draft\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news"
+                            ]
+                        },
+                        "description": "Creates a draft news article with `category_id` and `title_en` only (verifies relaxed draft validation where Arabic fields and featured image can be filled in later, and asserts the standardized `NewsAdminResource` structure). Saves `{{news_id}}` and `{{news_slug}}`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create News Draft (Arabic Title Only -> Set {{arabic_draft_id}})",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 201 Created', function () {",
+                                    "    pm.response.to.have.status(201);",
+                                    "});",
+                                    "",
+                                    "const jsonData = pm.response.json();",
+                                    "pm.test('Arabic-only draft sets status=draft and slug=null until English title is added', function () {",
+                                    "    pm.expect(jsonData.data.status).to.eql('draft');",
+                                    "    pm.expect(jsonData.data.title_ar).to.be.a('string').and.not.empty;",
+                                    "    pm.expect(jsonData.data.slug).to.be.null;",
+                                    "});",
+                                    "",
+                                    "if (jsonData && jsonData.data) {",
+                                    "    pm.collectionVariables.set('arabic_draft_id', String(jsonData.data.id));",
+                                    "    pm.collectionVariables.set('delete_target_news_id', String(jsonData.data.id));",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"category_id\": {{celebrities_category_id}},\n    \"title_ar\": \"مسودة خبر باللغة العربية فقط\",\n    \"action\": \"draft\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news"
+                            ]
+                        },
+                        "description": "Creates a draft providing only `title_ar` (without `title_en`) under the `celebrities` subcategory (`{{celebrities_category_id}}`). Saves `{{arabic_draft_id}}` and `{{delete_target_news_id}}`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Single News Article for Editing (Admin Show)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Returns NewsAdminResource with category, featured_image, and editor_images metadata', function () {",
+                                    "    const data = pm.response.json().data;",
+                                    "    pm.expect(String(data.id)).to.eql(pm.collectionVariables.get('news_id'));",
+                                    "    pm.expect(data).to.have.property('category');",
+                                    "    pm.expect(data).to.have.property('featured_image_id');",
+                                    "    pm.expect(data).to.have.property('editor_images');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{news_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{news_id}}"
+                            ]
+                        },
+                        "description": "Fetches the complete `NewsAdminResource` for `{{news_id}}` (works for both `draft` and `published` articles)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Draft with Full Bilingual Fields & HTML Sanitization Check",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const data = pm.response.json().data;",
+                                    "pm.test('Bilingual fields are populated and script/onclick are stripped', function () {",
+                                    "    pm.expect(data.title_ar).to.eql('واعي ميديا تطلق القمة الإبداعية الإقليمية');",
+                                    "    pm.expect(data.author_name_en).to.eql('Waai Editorial Team');",
+                                    "    pm.expect(data.content_en).to.not.include('<script');",
+                                    "    pm.expect(data.content_en).to.not.include('onclick');",
+                                    "    pm.expect(data.content_en).to.include('rel=\"noopener noreferrer\"');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"title_ar\": \"واعي ميديا تطلق القمة الإبداعية الإقليمية\",\n    \"title_en\": \"Waai Media Launches Regional Creative Summit\",\n    \"author_name_ar\": \"فريق تحرير واعي\",\n    \"author_name_en\": \"Waai Editorial Team\",\n    \"short_description_ar\": \"ملخص قصير للخبر باللغة العربية حول القمة الإبداعية الإقليمية.\",\n    \"short_description_en\": \"Short summary of the news article in English about the Regional Creative Summit.\",\n    \"content_ar\": \"<p>تفاصيل الخبر الكاملة باللغة العربية مع <strong>تنسيق غني</strong>.</p>\",\n    \"content_en\": \"<p onclick=\\\"alert(1)\\\">Full English article body with <a href=\\\"https://waaimedia.com\\\" target=\\\"_blank\\\">external link</a>.</p><script>alert('xss')</script>\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{news_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{news_id}}"
+                            ]
+                        },
+                        "description": "Populates all bilingual fields on the draft and verifies that `NewsHtmlSanitizerService` strips `<script>` tags and `onclick` attributes while enforcing `rel=\"noopener noreferrer\"` on `<a target=\"_blank\">`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Partial Update Draft (Update Only title_en, Preserve Omitted Fields)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const data = pm.response.json().data;",
+                                    "pm.test('Updated title_en while preserving omitted Arabic and English fields', function () {",
+                                    "    pm.expect(data.title_en).to.eql('Waai Media Launches Regional Creative Summit 2026');",
+                                    "    pm.expect(data.title_ar).to.eql('واعي ميديا تطلق القمة الإبداعية الإقليمية');",
+                                    "    pm.expect(data.author_name_ar).to.eql('فريق تحرير واعي');",
+                                    "    pm.expect(data.content_ar).to.include('تفاصيل الخبر الكاملة');",
+                                    "});",
+                                    "",
+                                    "if (data && data.slug) {",
+                                    "    pm.collectionVariables.set('news_slug', data.slug);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"title_en\": \"Waai Media Launches Regional Creative Summit 2026\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{news_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{news_id}}"
+                            ]
+                        },
+                        "description": "Sends only `title_en` in the `PATCH` body and verifies that omitted fields (`title_ar`, `author_name_ar`, `content_ar`, `content_en`, etc.) are preserved from the locked database row. Also updates `{{news_slug}}` since the article has not been published yet."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Clear Featured Image on Draft (featured_image_id: null)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const data = pm.response.json().data;",
+                                    "pm.test('Draft featured_image_id and featured_image_url are null', function () {",
+                                    "    pm.expect(data.featured_image_id).to.be.null;",
+                                    "    pm.expect(data.featured_image_url).to.be.null;",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"featured_image_id\": null\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{news_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{news_id}}"
+                            ]
+                        },
+                        "description": "Demonstrates clearing the featured image on a `draft` article by sending `\"featured_image_id\": null`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Assign Featured Image & Embed Editor Image on Draft",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const data = pm.response.json().data;",
+                                    "pm.test('Featured image is attached when {{image_id}} is provided', function () {",
+                                    "    if (pm.collectionVariables.get('image_id')) {",
+                                    "        pm.expect(String(data.featured_image_id)).to.eql(pm.collectionVariables.get('image_id'));",
+                                    "        pm.expect(data.featured_image_url).to.be.a('string').and.not.empty;",
+                                    "    }",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"featured_image_id\": {{image_id}},\n    \"content_ar\": \"<p>تفاصيل الخبر الكاملة باللغة العربية مع صورة داخلية:</p><p><img src=\\\"{{editor_image_url}}\\\" alt=\\\"صورة داخلية\\\"></p>\",\n    \"content_en\": \"<p>Full English article body with inline R2 image:</p><p><img src=\\\"{{editor_image_url}}\\\" alt=\\\"Inline editor image\\\"></p>\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{news_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{news_id}}"
+                            ]
+                        },
+                        "description": "Attaches `{{image_id}}` as the article's featured cover image and embeds `{{editor_image_url}}` inside both `content_ar` and `content_en` (syncing `news_editor_images`)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Multipart Update via POST with _method=PATCH (Direct File Upload Option)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Multipart _method=PATCH update succeeded', function () {",
+                                    "    const data = pm.response.json().data;",
+                                    "    pm.expect(data.author_name_en).to.eql('Waai Media Newsroom');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "_method",
+                                    "value": "PATCH",
+                                    "description": "Method spoofing for multipart/form-data updates",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "author_name_en",
+                                    "value": "Waai Media Newsroom",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "featured_image",
+                                    "description": "Optional direct featured image file upload (enable and select file to test direct replacement)",
+                                    "type": "file",
+                                    "src": [],
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{news_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{news_id}}"
+                            ]
+                        },
+                        "description": "Demonstrates updating an article using `POST /api/v1/admin/news/{{news_id}}` with `multipart/form-data` and `_method=PATCH` (used when uploading `featured_image` directly as a file on update)."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "4. Publishing",
+            "description": "Verifies the full publication lifecycle:\n1. Draft is hidden from public (`404 Not Found`).\n2. Publishing sets `status = \"published\"` and initializes `published_at`.\n3. Published article is visible on public endpoints (`200 OK`).\n4. Editing a published article preserves `published_at` and `slug`.\n5. Unpublishing converts `status` back to `draft` while preserving `published_at`.\n6. Republishing restores `status = \"published\"` while preserving the original `published_at`.",
+            "item": [
+                {
+                    "name": "1. Verify Draft is Hidden on Public Show Before Publish (404)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Draft article returns 404 Not Found on public endpoint', function () {",
+                                    "    pm.response.to.have.status(404);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/news/{{news_slug}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "news",
+                                "{{news_slug}}"
+                            ]
+                        },
+                        "description": "Confirms that while `{{news_id}}` has `status = \"draft\"`, requesting it on `GET /api/v1/news/{{news_slug}}` returns `404 Not Found`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2. Publish Draft Article (Set {{original_published_at}})",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const data = pm.response.json().data;",
+                                    "pm.test('Article status is published and published_at is set', function () {",
+                                    "    pm.expect(data.status).to.eql('published');",
+                                    "    pm.expect(data.published_at).to.be.a('string').and.not.empty;",
+                                    "    pm.expect(data.featured_image_id).to.not.be.null;",
+                                    "});",
+                                    "",
+                                    "if (data && data.published_at) {",
+                                    "    pm.collectionVariables.set('original_published_at', data.published_at);",
+                                    "}",
+                                    "if (data && data.slug) {",
+                                    "    pm.collectionVariables.set('news_slug', data.slug);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{news_id}}/publish",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{news_id}}",
+                                "publish"
+                            ]
+                        },
+                        "description": "Publishes `{{news_id}}` (`POST /api/v1/admin/news/{{news_id}}/publish`). Validates that all required bilingual fields, leaf `category_id`, and `featured_image_id` are present on the effective article state, transitions `status` to `published`, and records `{{original_published_at}}`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "3. Verify Published Article is Publicly Accessible (200 OK)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const data = pm.response.json().data;",
+                                    "pm.test('Public response matches published article slug and published_at', function () {",
+                                    "    pm.expect(data.slug).to.eql(pm.collectionVariables.get('news_slug'));",
+                                    "    pm.expect(data.published_at).to.eql(pm.collectionVariables.get('original_published_at'));",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/news/{{news_slug}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "news",
+                                "{{news_slug}}"
+                            ]
+                        },
+                        "description": "Verifies that the newly published article is immediately visible on `GET /api/v1/news/{{news_slug}}`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "4. Edit Published Article (Verify published_at & slug Immutability)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const data = pm.response.json().data;",
+                                    "pm.test('Editing a published article preserves original published_at and slug', function () {",
+                                    "    pm.expect(data.status).to.eql('published');",
+                                    "    pm.expect(data.published_at).to.eql(pm.collectionVariables.get('original_published_at'));",
+                                    "    pm.expect(data.slug).to.eql(pm.collectionVariables.get('news_slug'));",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"title_en\": \"Waai Media Launches Regional Creative Summit 2026 (Updated Headline)\",\n    \"short_description_en\": \"Updated summary after publication without changing published_at or slug.\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{news_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{news_id}}"
+                            ]
+                        },
+                        "description": "Updates `title_en` and `short_description_en` on an already-published article and asserts that neither `published_at` nor `slug` is overwritten."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "5. Unpublish Article Back to Draft (Verify published_at Preserved)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const jsonData = pm.response.json();",
+                                    "pm.test('Status becomes draft while original published_at is preserved', function () {",
+                                    "    pm.expect(jsonData.message).to.eql('News article converted to draft successfully.');",
+                                    "    pm.expect(jsonData.data.status).to.eql('draft');",
+                                    "    pm.expect(jsonData.data.published_at).to.eql(pm.collectionVariables.get('original_published_at'));",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{news_id}}/unpublish",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{news_id}}",
+                                "unpublish"
+                            ]
+                        },
+                        "description": "Converts the published article back to `draft` (`POST /api/v1/admin/news/{{news_id}}/unpublish`) and verifies that `published_at` is preserved."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "6. Verify Unpublished Article Returns 404 on Public Show",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Unpublished article is hidden from public (404 Not Found)', function () {",
+                                    "    pm.response.to.have.status(404);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/news/{{news_slug}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "news",
+                                "{{news_slug}}"
+                            ]
+                        },
+                        "description": "Confirms that after unpublishing, `GET /api/v1/news/{{news_slug}}` immediately returns `404 Not Found`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "7. Republish Article (Verify Original published_at Preserved)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const data = pm.response.json().data;",
+                                    "pm.test('Republishing restores status=published and preserves original published_at', function () {",
+                                    "    pm.expect(data.status).to.eql('published');",
+                                    "    pm.expect(data.published_at).to.eql(pm.collectionVariables.get('original_published_at'));",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{news_id}}/publish",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{news_id}}",
+                                "publish"
+                            ]
+                        },
+                        "description": "Republishes the article and confirms `published_at` still matches `{{original_published_at}}`."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "5. Search and Filtering",
+            "description": "Tests Admin and Public search, pagination, status filtering (`all`, `draft`, `published`), category filtering, and parent-to-subcategory expansion (`entertainment`).",
+            "item": [
+                {
+                    "name": "Admin List News (Default Pagination 10 per page)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const jsonData = pm.response.json();",
+                                    "pm.test('Returns paginated NewsAdminResource list with per_page=10', function () {",
+                                    "    pm.expect(jsonData).to.have.property('data');",
+                                    "    pm.expect(jsonData).to.have.property('meta');",
+                                    "    pm.expect(jsonData.meta.per_page).to.eql(10);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news?per_page=10&page=1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news"
+                            ],
+                            "query": [
+                                {
+                                    "key": "per_page",
+                                    "value": "10"
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                }
+                            ]
+                        },
+                        "description": "Lists all news articles (both drafts and published) for the Admin dashboard ordered by `created_at DESC`, `id DESC`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Admin Search by English Title Keyword (Case-Insensitive)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const jsonData = pm.response.json();",
+                                    "pm.test('Search returns matching articles in data array', function () {",
+                                    "    pm.expect(jsonData.data).to.be.an('array');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news?search=creative summit",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news"
+                            ],
+                            "query": [
+                                {
+                                    "key": "search",
+                                    "value": "creative summit",
+                                    "description": "Case-insensitive search against title_ar and title_en"
+                                }
+                            ]
+                        },
+                        "description": "Searches `title_ar` and `title_en` case-insensitively for `creative summit`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Admin Search by Arabic Title Keyword",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const jsonData = pm.response.json();",
+                                    "pm.test('Arabic search returns matching articles', function () {",
+                                    "    pm.expect(jsonData.data).to.be.an('array');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news?search=القمة الإبداعية",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news"
+                            ],
+                            "query": [
+                                {
+                                    "key": "search",
+                                    "value": "القمة الإبداعية"
+                                }
+                            ]
+                        },
+                        "description": "Searches `title_ar` and `title_en` for the Arabic phrase `القمة الإبداعية`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Admin Search with Literal SQL Wildcard Characters (100%_safe)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK and wildcards are escaped safely', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.data).to.be.an('array');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news?search=100%25_literal",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news"
+                            ],
+                            "query": [
+                                {
+                                    "key": "search",
+                                    "value": "100%25_literal",
+                                    "description": "Verifies % and _ are escaped via addcslashes($search, '%_\\\\')"
+                                }
+                            ]
+                        },
+                        "description": "Verifies that `%` and `_` in `search` are treated as literal characters rather than unescaped SQL `LIKE` wildcards."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Admin Filter by Status = draft",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const jsonData = pm.response.json();",
+                                    "pm.test('All returned items have status=draft', function () {",
+                                    "    pm.expect(jsonData.data).to.be.an('array');",
+                                    "    jsonData.data.forEach(item => {",
+                                    "        pm.expect(item.status).to.eql('draft');",
+                                    "    });",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news?status=draft",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news"
+                            ],
+                            "query": [
+                                {
+                                    "key": "status",
+                                    "value": "draft",
+                                    "description": "Allowed values: all, draft, published"
+                                }
+                            ]
+                        },
+                        "description": "Filters the Admin news list to only `draft` articles."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Admin Filter by Status = published",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const jsonData = pm.response.json();",
+                                    "pm.test('All returned items have status=published', function () {",
+                                    "    pm.expect(jsonData.data).to.be.an('array');",
+                                    "    jsonData.data.forEach(item => {",
+                                    "        pm.expect(item.status).to.eql('published');",
+                                    "    });",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news?status=published",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news"
+                            ],
+                            "query": [
+                                {
+                                    "key": "status",
+                                    "value": "published"
+                                }
+                            ]
+                        },
+                        "description": "Filters the Admin news list to only `published` articles."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Admin Filter by Parent Category Slug (category=entertainment Subcategory Expansion)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const jsonData = pm.response.json();",
+                                    "pm.test('Returns articles belonging to entertainment subcategories', function () {",
+                                    "    pm.expect(jsonData.data).to.be.an('array');",
+                                    "    const validNames = ['Entertainment', 'Celebrities', 'In Theaters', 'TV Shows', 'Book Reviews'];",
+                                    "    jsonData.data.forEach(item => {",
+                                    "        if (item.category && item.category.name_en) {",
+                                    "            pm.expect(validNames).to.include(item.category.name_en);",
+                                    "        }",
+                                    "    });",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news?category=entertainment&status=all",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news"
+                            ],
+                            "query": [
+                                {
+                                    "key": "category",
+                                    "value": "entertainment",
+                                    "description": "Automatically expands to include celebrities, in-theaters, tv-shows, and book-reviews"
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "all"
+                                }
+                            ]
+                        },
+                        "description": "Filters Admin news by `category=entertainment` (or `category_id={{entertainment_parent_id}}`), verifying `News::scopeInCategoryHierarchy` expands the parent category to include its 4 child subcategories."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Public Filter by Parent Category Slug (category=entertainment)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const jsonData = pm.response.json();",
+                                    "pm.test('Returns published entertainment subcategory articles', function () {",
+                                    "    pm.expect(jsonData.data).to.be.an('array');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/news?category=entertainment&per_page=10",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "news"
+                            ],
+                            "query": [
+                                {
+                                    "key": "category",
+                                    "value": "entertainment"
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "10"
+                                }
+                            ]
+                        },
+                        "description": "Verifies parent category expansion on the public news listing endpoint (`GET /api/v1/news?category=entertainment`)."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "6. Negative / Authorization Tests",
+            "description": "Tests authentication, role-based access control (`401`, `403`), validation error responses (`422`), image security rules (base64 rejection, external URL rejection, cross-user image ownership), and guarded permanent deletion.",
+            "item": [
+                {
+                    "name": "Unauthenticated Access to Admin Endpoint (401 Unauthorized)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 401 Unauthorized', function () {",
+                                    "    pm.response.to.have.status(401);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news"
+                            ]
+                        },
+                        "description": "Verifies that calling `/api/v1/admin/news` without a valid Bearer token returns `401 Unauthorized`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Editor Role Cannot Delete News Article (403 Forbidden)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Editor receives 403 Forbidden when attempting DELETE', function () {",
+                                    "    pm.response.to.have.status(403);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{editor_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{news_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{news_id}}"
+                            ]
+                        },
+                        "description": "Authenticates with `{{editor_token}}` and attempts `DELETE /api/v1/admin/news/{{news_id}}`. Verifies `role:super_admin,admin` / `EditorCannotDelete` returns `403 Forbidden`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Draft Without Any Title (422 Unprocessable Entity)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Entity', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "",
+                                    "pm.test('Validation errors include title requirement', function () {",
+                                    "    const errors = pm.response.json().errors;",
+                                    "    pm.expect(errors).to.have.property('title');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"category_id\": {{category_id}},\n    \"status\": \"draft\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news"
+                            ]
+                        },
+                        "description": "Verifies that saving a draft without either `title_ar` or `title_en` fails with `422 Unprocessable Entity`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Publish Incomplete Draft Missing Mandatory Bilingual Fields (422)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Entity', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "",
+                                    "pm.test('Validation errors report missing mandatory fields for publication', function () {",
+                                    "    const errors = pm.response.json().errors;",
+                                    "    pm.expect(errors).to.have.property('title_en');",
+                                    "    pm.expect(errors).to.have.property('author_name_ar');",
+                                    "    pm.expect(errors).to.have.property('author_name_en');",
+                                    "    pm.expect(errors).to.have.property('short_description_ar');",
+                                    "    pm.expect(errors).to.have.property('short_description_en');",
+                                    "    pm.expect(errors).to.have.property('content_ar');",
+                                    "    pm.expect(errors).to.have.property('content_en');",
+                                    "    pm.expect(errors).to.have.property('featured_image');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{arabic_draft_id}}/publish",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{arabic_draft_id}}",
+                                "publish"
+                            ]
+                        },
+                        "description": "Attempts to publish `{{arabic_draft_id}}` (which only has `title_ar` and `category_id`). Verifies that `PublishNewsRequest` + controller effective-state validation returns `422` listing all missing bilingual fields and `featured_image_id`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Assign Organizational Parent Category 'entertainment' Directly (422)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Entity', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "",
+                                    "pm.test('Validation error on category_id requires selecting a child subcategory', function () {",
+                                    "    const errors = pm.response.json().errors;",
+                                    "    pm.expect(errors).to.have.property('category_id');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"category_id\": {{entertainment_parent_id}},\n    \"title_en\": \"Invalid Parent Category Assignment Test\",\n    \"status\": \"draft\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news"
+                            ]
+                        },
+                        "description": "Attempts to create a news article directly under the `entertainment` parent category (`{{entertainment_parent_id}}`). Verifies `422` requiring one of its leaf subcategories (`celebrities`, `movies-series`, `music`, `trending`)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Prohibited Raw featured_image_url Field in Request Body (422)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Entity', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "",
+                                    "pm.test('Validation error reports featured_image_url is prohibited', function () {",
+                                    "    const errors = pm.response.json().errors;",
+                                    "    pm.expect(errors).to.have.property('featured_image_url');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"category_id\": {{category_id}},\n    \"title_en\": \"Attempt Raw Featured Image URL\",\n    \"featured_image_url\": \"https://evil.example.com/image.jpg\",\n    \"status\": \"draft\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news"
+                            ]
+                        },
+                        "description": "Verifies that passing a raw `featured_image_url` string in the payload is rejected by the `prohibited` validation rule (`422 Unprocessable Entity`)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Clear Featured Image on Published Article (422 Prohibited)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Entity', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "",
+                                    "pm.test('Validation error reports featured_image is required for published news', function () {",
+                                    "    const errors = pm.response.json().errors;",
+                                    "    pm.expect(errors).to.have.property('featured_image');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"featured_image_id\": null\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{news_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{news_id}}"
+                            ]
+                        },
+                        "description": "Attempts to set `\"featured_image_id\": null` on an already-published article (`{{news_id}}`). Verifies `422 Unprocessable Entity` because published articles must always retain a featured image."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Reject Base64 Data URI Image in Rich-Text Content (422)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Entity', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "",
+                                    "pm.test('Validation error reports content_en base64 image rejection', function () {",
+                                    "    const errors = pm.response.json().errors;",
+                                    "    pm.expect(errors).to.have.property('content_en');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"content_en\": \"<p>Base64 image test: <img src=\\\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=\\\"></p>\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{arabic_draft_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{arabic_draft_id}}"
+                            ]
+                        },
+                        "description": "Verifies `NewsHtmlSanitizerService` rejects `<img src=\"data:image/...\">` payloads with `422 Unprocessable Entity`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Reject Unregistered External Image URL in Rich-Text Content (422)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Entity', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "",
+                                    "pm.test('Validation error reports content_en external image rejection', function () {",
+                                    "    const errors = pm.response.json().errors;",
+                                    "    pm.expect(errors).to.have.property('content_en');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"content_en\": \"<p>External image test: <img src=\\\"https://untrusted.example.com/photo.jpg\\\"></p>\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{arabic_draft_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{arabic_draft_id}}"
+                            ]
+                        },
+                        "description": "Verifies `NewsHtmlSanitizerService` rejects any `<img src=\"...\">` URL that does not match an active `news_images` record on the configured R2 domain (`422 Unprocessable Entity`)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Editor Cannot Attach Another User's Unattached Image (422)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 422 Unprocessable Entity', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "",
+                                    "pm.test('Validation error reports featured_image_id ownership restriction', function () {",
+                                    "    const errors = pm.response.json().errors;",
+                                    "    pm.expect(errors).to.have.property('featured_image_id');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{editor_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"featured_image_id\": {{admin_unattached_image_id}}\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{arabic_draft_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{arabic_draft_id}}"
+                            ]
+                        },
+                        "description": "Authenticates as `editor` (`{{editor_token}}`) and attempts to attach `{{admin_unattached_image_id}}` (an unattached image uploaded by the Admin user) to `{{arabic_draft_id}}`. Verifies `NewsImageService::isImageUsableByUser` rejects cross-user unattached image hijacking with `422 Unprocessable Entity`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "[MANUAL / DESTRUCTIVE] Admin Permanently Delete News Article",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "exec": [
+                                    "// Safety guard: skip destructive deletion during automated Collection Runner runs",
+                                    "// unless the user explicitly sets collection variable run_destructive_delete = 'true'.",
+                                    "if (pm.collectionVariables.get('run_destructive_delete') !== 'true') {",
+                                    "    console.log('Skipping destructive DELETE request because run_destructive_delete is not set to \"true\".');",
+                                    "    if (typeof pm.execution !== 'undefined' && typeof pm.execution.skipRequest === 'function') {",
+                                    "        pm.execution.skipRequest();",
+                                    "    }",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        },
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200 OK', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Permanent deletion confirmation message returned', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.message).to.eql('News article permanently deleted successfully.');",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/v1/admin/news/{{delete_target_news_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "admin",
+                                "news",
+                                "{{delete_target_news_id}}"
+                            ]
+                        },
+                        "description": "**DESTRUCTIVE OPERATION (MANUAL TEST):**\nPermanently deletes `{{delete_target_news_id}}` (`DELETE /api/v1/admin/news/{{delete_target_news_id}}`) and dispatches `DeleteUnreferencedNewsImagesJob` after transaction commit.\n\n**Runner Guard:** This request is automatically skipped in the Postman Collection Runner unless you explicitly set the collection variable `run_destructive_delete` to `\"true\"`."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "7. Cleanup CLI Notes (Artisan Command Only - No HTTP Route)",
+            "description": "### Orphaned News Images Cleanup (CLI-Only)\n\nOrphaned image cleanup is intentionally implemented **exclusively as an Artisan console command** and is **not** exposed as an HTTP API route.\n\n#### 1. Safe Dry-Run Inspection (Default)\nLists candidate orphaned `news_images` database records and untracked R2 files under `news/covers/` and `news/editor/` older than the grace period without deleting anything:\n```bash\nphp artisan news:clean-orphaned-images --dry-run --grace-hours=24 --max-deletions=50\n```\n\n#### 2. Actual Destructive Cleanup (Requires `--force`)\nExecutes staged deletion (`NewsImageService::deleteImageIfUnreferenced`) for database-tracked orphans and safe deletion for untracked R2 objects:\n```bash\nphp artisan news:clean-orphaned-images --force --grace-hours=24 --max-deletions=50\n```\n\n#### 3. Scheduled Execution (`routes/console.php`)\nScheduled weekly on Mondays at `05:00` AM server time (`withoutOverlapping(120)`):\n```bash\nphp artisan news:clean-orphaned-images --force --grace-hours=24 --max-deletions=50\n```",
+            "item": []
+        }
+    ],
+    "auth": {
+        "type": "bearer",
+        "bearer": [
+            {
+                "key": "token",
+                "value": "{{admin_token}}",
+                "type": "string"
+            }
+        ]
+    },
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        },
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://127.0.0.1:8000",
+            "type": "string"
+        },
+        {
+            "key": "admin_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "editor_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "category_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "entertainment_parent_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "celebrities_category_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "news_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "news_slug",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "arabic_draft_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "delete_target_news_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "original_published_at",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "image_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "image_url",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "editor_image_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "editor_image_url",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "admin_unattached_image_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "run_destructive_delete",
+            "value": "false",
+            "type": "string"
+        }
+    ]
+}

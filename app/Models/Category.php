@@ -51,6 +51,14 @@ class Category extends Model
     }
 
     /**
+     * News articles belonging to this category.
+     */
+    public function news(): HasMany
+    {
+        return $this->hasMany(News::class, 'category_id');
+    }
+
+    /**
      * Scope to filter top-level categories by module type ordered by sort_order.
      */
     public function scopeForType(Builder $query, string $type): Builder
