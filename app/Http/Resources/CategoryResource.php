@@ -30,7 +30,8 @@ class CategoryResource extends JsonResource
             'slug' => (string) $this->slug,
         ];
 
-        if (in_array($this->type, ['news', 'portfolio'], true)) {
+        // Parents-only mode loads no children relation, so the key is omitted instead of being an empty list
+        if (in_array($this->type, ['news', 'portfolio'], true) && $this->relationLoaded('children')) {
             $children = $this->relationLoaded('children')
                 ? $this->children
                 : collect();

@@ -48,6 +48,7 @@ class ImageStorageService
         'clients/logos/',
         'team/photos/',
         'events/covers/',
+        'portfolio/images/',
     ];
 
     /**

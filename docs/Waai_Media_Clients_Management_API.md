@@ -226,7 +226,7 @@ Update client name, replacement logo, or both.
 ---
 
 ### 5.6 Admin Delete Client
-Permanently delete a client record and its R2 logo.
+Permanently delete a client record and its R2 logo. **This also permanently deletes every Portfolio item of the client** (with their media rows) in the same database transaction; Portfolio covers and images are removed from R2 afterwards unless still referenced elsewhere (see `docs/portfolio.md`).
 
 - **URL:** `DELETE /api/v1/admin/clients/{id}`
 - **Auth:** `Bearer <token>` (`super_admin` and `admin` only; `editor` returns `403 Forbidden`)

@@ -44,3 +44,11 @@ Schedule::command('clients:clean-orphaned-logos --force --grace-hours=24 --max-d
     ->weeklyOn(1, '04:30') // Every Monday at 04:30 AM (after the team photos cleanup)
     ->withoutOverlapping(120)
     ->runInBackground();
+
+// Weekly orphaned portfolio image cleanup (portfolio/images/ in R2). Same reviewed safe mode as the other modules:
+// --force, 24h minimum age, capped deletions, wrong-database abort, atomic lock + withoutOverlapping().
+// Review candidates first with: php artisan portfolio:clean-orphaned-images --dry-run
+Schedule::command('portfolio:clean-orphaned-images --force --grace-hours=24 --max-deletions=50')
+    ->weeklyOn(1, '05:00') // Every Monday at 05:00 AM (after the clients cleanup)
+    ->withoutOverlapping(120)
+    ->runInBackground();
