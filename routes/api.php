@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\BackgroundMusicController as AdminBackgroundMusicController;
+use App\Http\Controllers\Api\Admin\BlogController as AdminBlogController;
 use App\Http\Controllers\Api\Admin\ClientController as AdminClientController;
 use App\Http\Controllers\Api\Admin\EventController as AdminEventController;
 use App\Http\Controllers\Api\Admin\NewsController as AdminNewsController;
@@ -9,6 +10,7 @@ use App\Http\Controllers\Api\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\AppLinkController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\BackgroundMusicController;
+use App\Http\Controllers\Api\BlogController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\ContactInfoController;
@@ -99,6 +101,17 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'require.access', 'role:supe
     Route::match(['post', 'patch'], '/news/{news}/unpublish', [AdminNewsController::class, 'unpublish']);
     Route::delete('/news/{news}', [AdminNewsController::class, 'destroy'])
         ->middleware('role:super_admin,admin');
+
+    // Blogs Module Admin Endpoints
+    Route::post('/blogs/images', [AdminBlogController::class, 'uploadImage']);
+    Route::get('/blogs', [AdminBlogController::class, 'index']);
+    Route::post('/blogs', [AdminBlogController::class, 'store']);
+    Route::get('/blogs/{blog}', [AdminBlogController::class, 'show']);
+    Route::match(['put', 'patch', 'post'], '/blogs/{blog}', [AdminBlogController::class, 'update']);
+    Route::match(['post', 'patch'], '/blogs/{blog}/publish', [AdminBlogController::class, 'publish']);
+    Route::match(['post', 'patch'], '/blogs/{blog}/unpublish', [AdminBlogController::class, 'unpublish']);
+    Route::delete('/blogs/{blog}', [AdminBlogController::class, 'destroy'])
+        ->middleware('role:super_admin,admin');
 });
 
 // =========================================================================
@@ -158,3 +171,10 @@ Route::get('/categories', [CategoryController::class, 'index']);
 Route::get('/news/latest', [NewsController::class, 'latest']);
 Route::get('/news', [NewsController::class, 'index']);
 Route::get('/news/{identifier}', [NewsController::class, 'show']);
+
+// =========================================================================
+// Blogs Module Public Endpoints
+// =========================================================================
+Route::get('/blogs/latest', [BlogController::class, 'latest']);
+Route::get('/blogs', [BlogController::class, 'index']);
+Route::get('/blogs/{identifier}', [BlogController::class, 'show']);

@@ -1,0 +1,1465 @@
+{
+  "info": {
+    "_postman_id": "b1090123-8e4a-49c7-b521-7e829dc7a102",
+    "name": "Waai Media - Blogs Module API",
+    "description": "Comprehensive Postman v2.1 API collection for the Waai Media Blogs Module (`/api/v1`).\n\n### Prerequisites\n1. Run local Laravel server (`php artisan serve`).\n2. Run database migrations and seeders (`php artisan migrate --seed`).\n3. Authenticate using the dedicated Authentication Collection (`docs/Waai_Media_Authentication_API.postman_collection.json`) or Postman Environment to obtain valid Sanctum tokens with the `'access'` ability, and populate `{{admin_token}}` and `{{editor_token}}` before running protected Admin requests.\n4. For Image Uploads (Folder 3), select a local `.jpg`, `.png`, or `.webp` file (`<= 10 MB`) in the `image` form-data field.\n\n### Safety Guard\nDestructive permanent deletion (`DELETE /api/v1/admin/blogs/{{delete_target_blog_id}}`) is guarded by a pre-request script checking `run_destructive_delete === \"true\"`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Public Blog Endpoints",
+      "description": "Publicly accessible endpoints (`/api/v1/blogs`). No authentication required. Draft articles are strictly isolated and return HTTP 404.",
+      "item": [
+        {
+          "name": "Get Latest Homepage Blogs (Default Limit 3)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Response contains data array with at most 3 items', function () {",
+                  "    pm.expect(res).to.have.property('data');",
+                  "    pm.expect(res.data).to.be.an('array');",
+                  "    pm.expect(res.data.length).to.be.at.most(3);",
+                  "});",
+                  "",
+                  "if (res.data.length > 0) {",
+                  "    const item = res.data[0];",
+                  "    pm.test('Card contains required bilingual public fields', function () {",
+                  "        pm.expect(item).to.have.property('id');",
+                  "        pm.expect(item).to.have.property('slug');",
+                  "        pm.expect(item).to.have.property('title_ar');",
+                  "        pm.expect(item).to.have.property('title_en');",
+                  "        pm.expect(item).to.have.property('short_description_ar');",
+                  "        pm.expect(item).to.have.property('short_description_en');",
+                  "        pm.expect(item).to.have.property('category');",
+                  "        pm.expect(item).to.have.property('category_name_ar');",
+                  "        pm.expect(item).to.have.property('category_name_en');",
+                  "        pm.expect(item).to.have.property('featured_image_url');",
+                  "        pm.expect(item).to.have.property('published_at');",
+                  "    });",
+                  "    pm.test('Card excludes duplicate generic fields', function () {",
+                  "        pm.expect(item).to.not.have.property('title');",
+                  "        pm.expect(item).to.not.have.property('author_name');",
+                  "        pm.expect(item).to.not.have.property('short_description');",
+                  "        pm.expect(item).to.not.have.property('content');",
+                  "        pm.expect(item).to.not.have.property('category_name');",
+                  "    });",
+                  "    pm.test('Public card does not leak internal storage/admin metadata', function () {",
+                  "        pm.expect(item).to.not.have.property('uploaded_by');",
+                  "        pm.expect(item).to.not.have.property('storage_key');",
+                  "        pm.expect(item).to.not.have.property('deleting_at');",
+                  "        pm.expect(item).to.not.have.property('editor_images');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/blogs/latest",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "blogs",
+                "latest"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Latest Homepage Blogs - Arabic Localized",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "if (res.data && res.data.length > 0) {",
+                  "    pm.test('Response exposes both Arabic and English title fields', function () {",
+                  "        const item = res.data[0];",
+                  "        pm.expect(item).to.have.property('title_ar');",
+                  "        pm.expect(item).to.have.property('title_en');",
+                  "        pm.expect(item).to.not.have.property('title');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "ar",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/blogs/latest",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "blogs",
+                "latest"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Paginated Blogs Listing (Default 6/Page)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Pagination structure present with max 6 per page', function () {",
+                  "    pm.expect(res).to.have.property('data');",
+                  "    pm.expect(res).to.have.property('meta');",
+                  "    pm.expect(res.data).to.be.an('array');",
+                  "    pm.expect(res.data.length).to.be.at.most(6);",
+                  "    pm.expect(res.meta.per_page).to.eql(6);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/blogs?page=1&per_page=6",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "blogs"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "6"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Blogs Filtered by Category ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "if (res.data && res.data.length > 0) {",
+                  "    pm.test('All returned articles match category_id', function () {",
+                  "        const expectedCatId = parseInt(pm.collectionVariables.get('category_id'), 10);",
+                  "        res.data.forEach(function (article) {",
+                  "            pm.expect(article.category_id).to.eql(expectedCatId);",
+                  "        });",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/blogs?category_id={{category_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "blogs"
+              ],
+              "query": [
+                {
+                  "key": "category_id",
+                  "value": "{{category_id}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Blogs Filtered by Category Slug",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/blogs?category={{category_slug}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "blogs"
+              ],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "{{category_slug}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Blog Details by Slug",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Response contains full published article with bilingual fields', function () {",
+                  "    pm.expect(res.data).to.have.property('id');",
+                  "    pm.expect(res.data).to.have.property('slug');",
+                  "    pm.expect(res.data).to.have.property('title_en');",
+                  "    pm.expect(res.data).to.have.property('title_ar');",
+                  "    pm.expect(res.data).to.have.property('content_en');",
+                  "    pm.expect(res.data).to.have.property('content_ar');",
+                  "    pm.expect(res.data).to.have.property('category');",
+                  "});",
+                  "",
+                  "pm.test('Generic duplicate fields are excluded', function () {",
+                  "    pm.expect(res.data).to.not.have.property('title');",
+                  "    pm.expect(res.data).to.not.have.property('author_name');",
+                  "    pm.expect(res.data).to.not.have.property('short_description');",
+                  "    pm.expect(res.data).to.not.have.property('content');",
+                  "    pm.expect(res.data).to.not.have.property('category_name');",
+                  "});",
+                  "",
+                  "pm.test('Internal fields are not exposed', function () {",
+                  "    pm.expect(res.data).to.not.have.property('uploaded_by');",
+                  "    pm.expect(res.data).to.not.have.property('storage_key');",
+                  "    pm.expect(res.data).to.not.have.property('deleting_at');",
+                  "    pm.expect(res.data).to.not.have.property('editor_images');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept-Language",
+                "value": "en",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/blogs/{{published_blog_slug}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "blogs",
+                "{{published_blog_slug}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Blog Details by Numeric ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Resolved correctly by numeric ID', function () {",
+                  "    pm.expect(res.data.id).to.eql(parseInt(pm.collectionVariables.get('published_blog_id'), 10));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/blogs/{{published_blog_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "blogs",
+                "{{published_blog_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Blog Details - Non-Existent Identifier (404 Expected)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/blogs/non-existent-blog-slug-999999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "blogs",
+                "non-existent-blog-slug-999999"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Admin Blog Management",
+      "description": "Administrative endpoints (`/api/v1/admin/blogs`). Requires Sanctum Bearer token with `'access'` ability and `super_admin`, `admin`, or `editor` role (provided via `{{admin_token}}` or `{{editor_token}}`).",
+      "item": [
+        {
+          "name": "List Admin Blogs (Default 10/Page)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Returns admin listing structure with meta', function () {",
+                  "    pm.expect(res).to.have.property('data');",
+                  "    pm.expect(res).to.have.property('meta');",
+                  "    pm.expect(res.data).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/blogs?page=1&per_page=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "blogs"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Admin Blogs - Filter by Search and Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/blogs?status=draft&search=Technology",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "blogs"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "draft"
+                },
+                {
+                  "key": "search",
+                  "value": "Technology"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Blog Draft (Minimal Bilingual Fields)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Draft created with status draft and generated slug', function () {",
+                  "    pm.expect(res.data.status).to.eql('draft');",
+                  "    pm.expect(res.data.published_at).to.be.null;",
+                  "    pm.expect(res.data.slug).to.include(res.data.id.toString());",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('target_blog_id', res.data.id);",
+                  "pm.collectionVariables.set('target_blog_slug', res.data.slug);",
+                  "pm.collectionVariables.set('delete_target_blog_id', res.data.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{editor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"category_id\": {{category_id}},\n    \"title_en\": \"Digital Marketing Frontiers 2026\",\n    \"title_ar\": \"آفاق التسويق الرقمي 2026\",\n    \"author_name_en\": \"Jane Smith\",\n    \"author_name_ar\": \"جين سميث\",\n    \"short_description_en\": \"Brief insights on marketing evolution.\",\n    \"short_description_ar\": \"رؤى موجزة عن تطور التسويق.\",\n    \"status\": \"draft\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/blogs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "blogs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create and Publish Blog Directly",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Published article has status published and valid published_at', function () {",
+                  "    pm.expect(res.data.status).to.eql('published');",
+                  "    pm.expect(res.data.published_at).to.not.be.null;",
+                  "    pm.expect(res.data.featured_image_id).to.eql(parseInt(pm.collectionVariables.get('cover_image_id'), 10));",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('published_blog_id', res.data.id);",
+                  "pm.collectionVariables.set('published_blog_slug', res.data.slug);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"category_id\": {{category_id}},\n    \"title_en\": \"Mastering Modern Content Creation\",\n    \"title_ar\": \"احتراف صناعة المحتوى الحديث\",\n    \"author_name_en\": \"Alex Taylor\",\n    \"author_name_ar\": \"أليكس تايلور\",\n    \"short_description_en\": \"A complete guide to producing engaging media content.\",\n    \"short_description_ar\": \"دليل شامل لإنتاج محتوى إعلامي جذاب ومؤثر.\",\n    \"content_en\": \"<p>Comprehensive article body in English.</p>\",\n    \"content_ar\": \"<p>محتوى المقال الكامل باللغة العربية.</p>\",\n    \"featured_image_id\": {{cover_image_id}},\n    \"action\": \"publish\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/blogs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "blogs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Admin Blog Details",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Admin representation includes full bilingual fields and relations', function () {",
+                  "    pm.expect(res.data).to.have.property('id');",
+                  "    pm.expect(res.data).to.have.property('title_en');",
+                  "    pm.expect(res.data).to.have.property('title_ar');",
+                  "    pm.expect(res.data).to.have.property('category');",
+                  "    pm.expect(res.data).to.have.property('editor_images');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{editor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/blogs/{{target_blog_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "blogs",
+                "{{target_blog_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Blog (Partial Update / Patch)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Title updated and slug regenerated for un-published draft', function () {",
+                  "    pm.expect(res.data.title_en).to.eql('Updated Digital Marketing Frontiers 2026');",
+                  "    pm.expect(res.data.slug).to.include('updated-digital-marketing-frontiers-2026');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{editor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title_en\": \"Updated Digital Marketing Frontiers 2026\",\n    \"short_description_en\": \"Updated short description for testing partial updates.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/blogs/{{target_blog_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "blogs",
+                "{{target_blog_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Publish Draft Blog",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Draft transitioned to published', function () {",
+                  "    pm.expect(res.data.status).to.eql('published');",
+                  "    pm.expect(res.data.published_at).to.not.be.null;",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('published_at_preserved', res.data.published_at);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{editor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"author_name_en\": \"Jane Smith\",\n    \"author_name_ar\": \"جين سميث\",\n    \"content_en\": \"<p>Full English body text required for publishing.</p>\",\n    \"content_ar\": \"<p>محتوى عربي مطلوب للاعتماد والنشر.</p>\",\n    \"featured_image_id\": {{cover_image_id}}\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/blogs/{{target_blog_id}}/publish",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "blogs",
+                "{{target_blog_id}}",
+                "publish"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Unpublish Blog (Revert to Draft)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Status is draft and original published_at is preserved', function () {",
+                  "    pm.expect(res.data.status).to.eql('draft');",
+                  "    pm.expect(res.data.published_at).to.eql(pm.collectionVariables.get('published_at_preserved'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{editor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/blogs/{{target_blog_id}}/unpublish",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "blogs",
+                "{{target_blog_id}}",
+                "unpublish"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Republish Blog (Preserves published_at)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Status is published and original published_at is strictly preserved', function () {",
+                  "    pm.expect(res.data.status).to.eql('published');",
+                  "    pm.expect(res.data.published_at).to.eql(pm.collectionVariables.get('published_at_preserved'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{editor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/blogs/{{target_blog_id}}/publish",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "blogs",
+                "{{target_blog_id}}",
+                "publish"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Blog - Editor Forbidden (403 Expected)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 403 Forbidden', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{editor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/blogs/{{delete_target_blog_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "blogs",
+                "{{delete_target_blog_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Blog - Admin Permanent Delete (Guarded)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "if (pm.collectionVariables.get('run_destructive_delete') !== 'true') {",
+                  "    console.warn('Destructive delete skipped. Set collection variable run_destructive_delete = \"true\" to execute.');",
+                  "    pm.execution.skipRequest();",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Delete confirmation received', function () {",
+                  "    pm.expect(res.message).to.include('deleted successfully');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/blogs/{{delete_target_blog_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "blogs",
+                "{{delete_target_blog_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Blog Media & Image Management",
+      "description": "Image upload endpoints (`/api/v1/admin/blogs/images`). Uploaded images are stored in Cloudflare R2 under `blogs/covers/` or `blogs/editor/`.",
+      "item": [
+        {
+          "name": "Upload Cover Image",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Returns uploaded image data with id and url', function () {",
+                  "    pm.expect(res).to.have.property('data');",
+                  "    pm.expect(res.data).to.have.property('id');",
+                  "    pm.expect(res.data).to.have.property('url');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('cover_image_id', res.data.id);",
+                  "pm.collectionVariables.set('cover_image_url', res.data.url);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{editor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "type",
+                  "value": "cover",
+                  "type": "text"
+                },
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/blogs/images",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "blogs",
+                "images"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Upload Editor Body Image",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Returns editor image data with id and url', function () {",
+                  "    pm.expect(res.data).to.have.property('id');",
+                  "    pm.expect(res.data).to.have.property('url');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('editor_image_id', res.data.id);",
+                  "pm.collectionVariables.set('editor_image_url', res.data.url);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{editor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "type",
+                  "value": "editor",
+                  "type": "text"
+                },
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/blogs/images",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "blogs",
+                "images"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Upload Image - Invalid MIME Type (422 Expected)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 422 Unprocessable Content', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Validation error on image field', function () {",
+                  "    pm.expect(res).to.have.property('errors');",
+                  "    pm.expect(res.errors).to.have.property('image');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{editor_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "type",
+                  "value": "cover",
+                  "type": "text"
+                },
+                {
+                  "key": "image",
+                  "value": "plain text instead of image file",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/blogs/images",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "blogs",
+                "images"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "editor_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "category_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "category_slug",
+      "value": "digital-marketing-trends",
+      "type": "string"
+    },
+    {
+      "key": "cover_image_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "cover_image_url",
+      "value": "https://pub-r2.waai.test/blogs/covers/example.webp",
+      "type": "string"
+    },
+    {
+      "key": "editor_image_id",
+      "value": "2",
+      "type": "string"
+    },
+    {
+      "key": "editor_image_url",
+      "value": "https://pub-r2.waai.test/blogs/editor/example.webp",
+      "type": "string"
+    },
+    {
+      "key": "target_blog_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "target_blog_slug",
+      "value": "digital-marketing-frontiers-2026-1",
+      "type": "string"
+    },
+    {
+      "key": "published_blog_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "published_blog_slug",
+      "value": "mastering-modern-content-creation-1",
+      "type": "string"
+    },
+    {
+      "key": "published_at_preserved",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "delete_target_blog_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "run_destructive_delete",
+      "value": "false",
+      "type": "string"
+    }
+  ]
+}

@@ -52,3 +52,14 @@ Schedule::command('news:clean-orphaned-images --force --grace-hours=24 --max-del
     ->weeklyOn(1, '05:00') // Every Monday at 05:00 AM (after the client logos cleanup)
     ->withoutOverlapping(120)
     ->runInBackground();
+
+// Weekly orphaned blog image cleanup (blogs/covers/ and blogs/editor/ in R2).
+// Scheduled in dry-run mode (without --force) for safe candidate reporting and logging.
+// Enforces a 24h grace period, capped deletions (50), atomic cache lock + withoutOverlapping(120),
+// and onOneServer() to prevent duplicate runs across multi-instance environments.
+// For manual destructive cleanup: php artisan blogs:clean-orphaned-images --force
+Schedule::command('blogs:clean-orphaned-images --grace-hours=24 --max-deletions=50')
+    ->weeklyOn(1, '05:30') // Every Monday at 05:30 AM (after the news image cleanup)
+    ->withoutOverlapping(120)
+    ->onOneServer()
+    ->runInBackground();

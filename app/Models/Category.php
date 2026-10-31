@@ -59,6 +59,14 @@ class Category extends Model
     }
 
     /**
+     * Blog articles belonging to this category.
+     */
+    public function blogs(): HasMany
+    {
+        return $this->hasMany(Blog::class, 'category_id');
+    }
+
+    /**
      * Scope to filter top-level categories by module type ordered by sort_order.
      */
     public function scopeForType(Builder $query, string $type): Builder
