@@ -31,19 +31,22 @@ The dashboard reads the hierarchy dynamically from `GET /admin/portfolio/categor
 
 ## 2. Data model
 
-`portfolio_items`: `id`, `client_id` (FK `clients`, `RESTRICT`, nullable only for rows created before the client requirement), `category_id`, `subcategory_id` (nullable), `title_en`, `title_ar` (both nullable), `cover_image_path` (R2 key of the dedicated cover, nullable), `status` (`draft`|`published`), `link_1`, `link_2`, `link_3` (Web Design only), `published_at`, `slot_subcategory_key` (generated, see below), timestamps. Foreign keys to `categories` use `RESTRICT`.
+`portfolio_items`: `id`, `client_id` (FK `clients`, `RESTRICT`, nullable only for rows created before the client requirement), `category_id`, `subcategory_id` (nullable), `title_en` (mandatory on create), `title_ar` (nullable), `slug` (unique string, auto-generated from `title_en` as `{title_en_slug}-{id}`), `cover_image_path` (R2 key of the dedicated cover, nullable), `status` (`draft`|`published`), `link_1`, `link_2`, `link_3` (Web Design only), `published_at`, timestamps. Foreign keys to `categories` use `RESTRICT`.
 
-### Client / category slot uniqueness
+### Multiple Items per Client and Subcategory
 
-A client can have items in many main categories and many subcategories, but only **one item per slot**, whether draft or published:
+A client can have multiple portfolio items under the same subcategory or category (the legacy unique slot restriction has been removed). Each portfolio item has its own distinct `id`, unique `slug`, and media.
 
-* category with subcategories: one item per **client + subcategory**;
-* Web Design (no subcategories): one item per **client + main category**;
-* drafts count exactly like published items, and unpublishing keeps the slot.
+### Slug Lifecycle
 
-Because a subcategory is now mandatory for every item whose category has subcategories (also drafts), the only items without a subcategory are Web Design items. The generated column is still what makes that case unique: `UNIQUE (client_id, category_id, subcategory_id)` alone would let a client hold any number of Web Design items, since `NULL`s never compare equal.
-
-Enforcement is layered: request validation returns **422** with the conflicting item id (`subcategory_id` or `category_id` error) for create and update (also when moving an item or changing its client), and the database has the final say: `UNIQUE (client_id, category_id, slot_subcategory_key)` where `slot_subcategory_key` is a STORED generated column `COALESCE(subcategory_id, 0)`. A plain composite unique index would allow unlimited duplicates because `NULL`s are never equal in MySQL; the generated column removes that gap. A concurrent request that slips past the validation hits the index and is returned as the same 422. Rows with no client (legacy) are not constrained.
+* **Generation**: Auto-generated on create from `title_en` formatted as `{normalized-title-en}-{portfolio_id}`.
+* **Uniqueness**: Guaranteed unique by appending `-{$portfolioId}` suffix. Even if two items have identical English titles, their slugs are distinct.
+* **Arabic Title Independent**: Slugs are generated strictly from `title_en`. `title_ar` is never used for slug generation.
+* **Immutability Policy**:
+  * While an item is in `draft` (never published, `published_at === null`), updating `title_en` regenerates the slug.
+  * Once published (`published_at !== null`), the slug becomes permanently immutable to preserve search engine optimization (SEO) and external links, even if `title_en` is updated later or the item is unpublished back to draft.
+  * Slugs cannot be set or edited manually by API consumers.
+* **Lookup**: Public details endpoint `GET /api/v1/portfolio/{identifier}` accepts either the numeric `id` or the `slug`.
 
 ### Deleting a client deletes its portfolio
 
@@ -87,7 +90,8 @@ All require `Authorization: Bearer <access token>` with the `access` ability.
 | `category_id` | integer | required on create; must be a portfolio main category |
 | `subcategory_id` | integer | **required whenever the main category has subcategories** (drafts too); must belong to the category; must be omitted/null for Web Design |
 | `cover_image` | file | PNG/JPG ≤ 10 MB, the dedicated cover. Optional for drafts, required to publish. Omitted on update = the current cover is kept |
-| `title_en`, `title_ar` | string ≤ 255 | at least one is required to save; both to publish (see section 8) |
+| `title_en` | string ≤ 255 | **mandatory on create (both draft and published)**; cannot be updated to empty/whitespace. At least one Latin alphanumeric character required for slug generation |
+| `title_ar` | string ≤ 255 | optional for draft, required to publish (see section 8) |
 | `status` | `draft` \| `published` | create: default `draft`. update: omitted = keep current status |
 | `media[N][image]` | file | PNG/JPG, ≤ 10 MB (image kinds) |
 | `media[N][url]` | string | http(s) URL, ≤ 500 (video URLs; press covering link) |
@@ -148,7 +152,7 @@ media[1][image]=<file>
 {
   "data": {
     "id": 7,
-    "title": "Launch",
+    "slug": "launch-7",
     "title_en": "Launch",
     "title_ar": "الإطلاق",
     "status": "published",
@@ -158,7 +162,6 @@ media[1][image]=<file>
     "category": { "id": 3, "slug": "pr", "name": "PR" },
     "subcategory": { "id": 11, "slug": "press-covering", "name": "Press Covering" },
     "kind": "images_with_url",
-    "link_1": null, "link_2": null, "link_3": null,
     "published_at": "2026-10-30T10:00:00.000000Z",
     "created_at": "...", "updated_at": "...",
     "media_count": 2,
@@ -169,11 +172,11 @@ media[1][image]=<file>
 }
 ```
 
-`title` is the title in the language negotiated from `Accept-Language` (falls back to the other language when empty). In list responses `media` is replaced by `media_count` (`client` and `cover_image_url` are in both).
+Admin responses provide both language fields (`title_en` and `title_ar`) without a redundant generic `title`. Note that `link_1`, `link_2`, and `link_3` are only included when `kind` is `web_design`. In list responses `media` is replaced by `media_count` (`client` and `cover_image_url` are in both).
 
 ## 5. Draft / publish behavior
 
-* **Draft** (default on create): needs **one title (Arabic or English), a valid existing client, a valid main portfolio category and - when that category has subcategories - a valid subcategory of it** (Web Design has none and keeps `subcategory_id` null). The cover, images, video URLs and Web Design links may stay empty. Anything that *is* sent is still validated (image type/size, URL format, Press Covering image + URL pairs). The same rule applies to every operation that leaves an item in draft: create, update of a draft, saving a published item as draft (`status=draft`) and unpublish. It is enforced in the request validation **and again in the service**, so a draft stored without a subcategory by an earlier version cannot be updated, published or unpublished until a subcategory is chosen (`422 subcategory_id`).
+* **Draft** (default on create): needs **`title_en` (mandatory for slug generation), a valid existing client, a valid main portfolio category and - when that category has subcategories - a valid subcategory of it** (`title_ar` is optional for drafts; Web Design has no subcategories and keeps `subcategory_id` null). The cover, images, video URLs and Web Design links may stay empty. Anything that *is* sent is still validated (image type/size, URL format, Press Covering image + URL pairs). The same rule applies to every operation that leaves an item in draft: create, update of a draft, saving a published item as draft (`status=draft`) and unpublish.
 * **Publish** (`status=published` on create/update, or `POST /publish`): validated against the final stored state, atomically. On failure the response is 422 and nothing is changed or left in R2.
   * all kinds: `title_en` and `title_ar` (see section 8), a valid client, a **cover image**, and a subcategory when the category has subcategories
   * `images`: ≥ 1 image · `images_with_url`: ≥ 1 image and a URL on every image · `video_urls`: ≥ 1 video URL · `web_design`: featured image **and** cover image (two different images), `link_1`, `link_2`
@@ -207,27 +210,34 @@ media[1][image]=<file>
 
 Titles are the only translated item fields; the dashboard supplies both - nothing is machine-translated. Category names are localized from the seeded `name_en` / `name_ar`. The `Accept-Language` header (`ar` or `en`, default `en`, handled by the existing `LocaleNegotiator`) selects the public `title` and category names.
 
-> **Approved rule:** a draft needs at least one title (Arabic or English); publishing requires **both** (same as Events). Public responses fall back to the other language only if a title is empty.
+> **Rule:** `title_en` is **mandatory** for every portfolio item (draft or published) to generate a reliable URL slug. `title_ar` is optional for drafts, but required to publish (same as Events). Both language fields are returned explicitly in the API (`title_en`, `title_ar`). In public listing and details, the localized `title` is chosen based on `Accept-Language` with fallback.
 
 ## 9. Public endpoints (no authentication)
 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/portfolio` | Experience A: published **Portfolio cards** (All, filters, homepage) |
-| GET | `/portfolio/{id}` | one published item with its content and sibling navigation |
+| GET | `/portfolio/{identifier}` | one published item with its content and sibling navigation (accepts numeric `id` or string `slug`) |
 | GET | `/portfolio/clients?category_id=` | Experience B: **unique Client cards** with published work in a main category |
 | GET | `/portfolio/clients/{client}?category_id=` | one client's subcategory tabs inside a main category |
 | GET | `/categories?type=portfolio` | category hierarchy (see section 14) |
 
-Only published items are ever visible (status published, `published_at` recorded and not in the future); drafts and unknown ids return 404. No status, storage keys, other-language titles or internal timestamps are exposed. Titles and category names follow `Accept-Language` (`ar`/`en`, default `en`).
+Only published items are ever visible (status published, `published_at` recorded and not in the future); drafts and unknown ids/slugs return 404. No status, storage keys, or internal timestamps are exposed.
 
 ### 9.1 Portfolio cards - `GET /portfolio`
 
-Query (all optional, combinable): `category_id` (main category, **includes its subcategories**), `subcategory_id`, `client_id`, `per_page` (default 12, 1-100), `page`. A `subcategory_id` that does not belong to `category_id`, an unknown client, or a non-portfolio/child id given as `category_id` returns 422. Order: `published_at DESC, id DESC`. Standard paginator: `data`, `links`, `meta`. The result is always a list of portfolio items; a filter never changes the response type.
+Query (all optional, combinable): `category_id` (main category, **includes its subcategories**), `subcategory_id`, `client_id`, `per_page`, `page`.
+* **Ordering**: Strict newest-to-oldest ordering: `published_at DESC, id DESC`.
+* **Client Works & Pagination**: When `client_id` is supplied, all published works of this client are returned ordered newest first. Default `per_page` when filtered by `client_id` is **6** (6 works per page; Page 1 = newest 6, Page 2 = next 6, etc.), but can be overridden with `?per_page=N`. Standard pagination metadata (`current_page`, `last_page`, `per_page`, `total`, `next_page_url`, `prev_page_url`) is included.
+* **Homepage latest three:** `GET /portfolio?per_page=3&page=1` returns the 3 most recently published works.
 
 ```json
 { "data": [ {
-    "id": 7, "title": "Launch",
+    "id": 7,
+    "slug": "launch-7",
+    "title_en": "Launch",
+    "title_ar": "الإطلاق",
+    "title": "Launch",
     "cover_image_url": "https://<public-r2-domain>/portfolio/images/<uuid>.jpg",
     "client": { "id": 5, "name": "Acme", "logo_url": "https://.../clients/logos/<uuid>.png" },
     "category": { "id": 1, "slug": "social-media-campaign", "name": "Social Media Campaign" },
@@ -237,12 +247,11 @@ Query (all optional, combinable): `category_id` (main category, **includes its s
 } ], "links": {}, "meta": {} }
 ```
 
-* **Homepage latest three:** `GET /portfolio?per_page=3&page=1` (no separate endpoint). The same endpoint serves other pages with other `per_page` values; the 100 maximum is unchanged.
 * Cards carry no media (an item may have any number of images); media is in the details.
 
-### 9.2 Details - `GET /portfolio/{id}`
+### 9.2 Details - `GET /portfolio/{identifier}`
 
-Card fields plus `media[] {id, image_url, url}`, `link_1..3` and `client_category_items[]`: the client's published items in the **same main category** (including the current one), ordered like the subcategory list, each `{id, title, cover_image_url, subcategory, is_current}`. The frontend opens the selected tab by `id` (stable, never inferred from the client) and shows the others as tabs.
+Accepts either the numeric `id` or the `slug`. Card fields plus `media[] {id, image_url, url}`, `link_1..3` (for Web Design only), and `client_category_items[]`: the client's published items in the **same main category** (including the current one), ordered newest first, each `{id, slug, title, cover_image_url, subcategory, is_current}`. The frontend opens the selected tab by `id` or `slug` and shows the others as tabs.
 
 ### 9.3 Unique clients by main category - `GET /portfolio/clients?category_id=`
 
@@ -336,11 +345,11 @@ This endpoint lists **all configured** subcategories of a parent. The subcategor
 
 ## 15. Postman
 
-`docs/Waai_Media_Portfolio_API.postman_collection.json` (112 requests, folders 0-9) with the existing `docs/Waai_Media_Local.postman_environment.json` (`base_url`, `admin_email`/`admin_password`, `editor_email`/`editor_password`, `device_name`). No token, password or secret is stored in the collection; the login requests (folder 0) call the existing `POST /auth/login` and store `admin_token` / `editor_token`.
+`docs/Waai_Media_Portfolio_API.postman_collection.json` (110 requests, folders 1-9) with the existing `docs/Waai_Media_Local.postman_environment.json`. Authentication is separated: obtain `admin_token` and `editor_token` from the dedicated Authentication collection (`docs/Waai_Media_Authentication_API.postman_collection.json`) or environment before executing protected admin requests.
 
 Recommended sequence (use a local or test server):
 
-1. **0 Authentication** - log in as Admin and Editor.
+1. **Setup Authentication** - obtain `admin_token` and `editor_token` from the Authentication collection / environment.
 2. **1 Setup** - categories (stores every `cat_*` / `sub_*` id), the category hierarchy modes, and the clients (stores `client_id` = client A and `client_id_2` = client B).
 3. **2 Create** - a draft with cover and images, one published example for each of the six main categories (image, video URL, Press Covering, Web Design) and a minimal draft.
 4. **3 Update and Media** - update text, add work images, replace a selected image, remove selected images, replace the cover, Press URL and Web Design link changes, category changes with `confirm_media_reset`.

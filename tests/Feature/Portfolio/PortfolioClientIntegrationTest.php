@@ -6,17 +6,14 @@ use App\Models\Client;
 use App\Models\PortfolioItem;
 use App\Models\PortfolioMedia;
 use App\Models\User;
-use App\Services\Portfolio\PortfolioItemService;
 use App\Services\Storage\ImageStorageService;
 use Carbon\Carbon;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
-use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\Sanctum;
 use Tests\Feature\Portfolio\Concerns\PortfolioTestHelpers;
 use Tests\TestCase;
@@ -104,31 +101,29 @@ class PortfolioClientIntegrationTest extends TestCase
         expect(PortfolioItem::where('client_id', $client->id)->count())->toBe(9);
     }
 
-    public function test_the_same_subcategory_is_blocked_for_a_client_even_across_draft_and_published(): void
+    public function test_multiple_items_for_the_same_client_and_subcategory_are_allowed(): void
     {
         $client = Client::factory()->create();
-        $first = $this->create($this->sel('branding', $client->id) + $this->titles())->assertStatus(201)->json('data.id');
+        $first = $this->create($this->sel('branding', $client->id) + ['title_en' => 'Project 1'])->assertStatus(201)->json('data');
+        $second = $this->create($this->sel('branding', $client->id) + ['title_en' => 'Project 2'])->assertStatus(201)->json('data');
+        $third = $this->create($this->sel('branding', $client->id) + ['title_en' => 'Project 3'])->assertStatus(201)->json('data');
 
-        // draft vs draft
-        $this->create($this->sel('branding', $client->id) + $this->titles())
-            ->assertStatus(422)->assertJsonValidationErrors(['subcategory_id']);
-
-        // a published item also holds the slot
-        $this->itemFor($client, 'graphic-design');
-        $this->create($this->sel('graphic-design', $client->id) + $this->titles())
-            ->assertStatus(422)->assertJsonValidationErrors(['subcategory_id']);
-
-        expect(PortfolioItem::where('client_id', $client->id)->count())->toBe(2)
-            ->and(PortfolioItem::find($first))->not->toBeNull();
+        expect($first['id'])->not->toBe($second['id']);
+        expect($second['id'])->not->toBe($third['id']);
+        expect($first['slug'])->not->toBe($second['slug']);
+        expect($second['slug'])->not->toBe($third['slug']);
+        expect(PortfolioItem::where('client_id', $client->id)->count())->toBe(3);
     }
 
-    public function test_web_design_is_unique_per_client(): void
+    public function test_multiple_web_design_items_per_client_are_allowed(): void
     {
         $client = Client::factory()->create();
-        $this->create($this->sel('web-design', $client->id) + $this->titles())->assertStatus(201);
+        $first = $this->create($this->sel('web-design', $client->id) + ['title_en' => 'Site 1'])->assertStatus(201)->json('data');
+        $second = $this->create($this->sel('web-design', $client->id) + ['title_en' => 'Site 2'])->assertStatus(201)->json('data');
 
-        $this->create($this->sel('web-design', $client->id) + $this->titles())
-            ->assertStatus(422)->assertJsonValidationErrors(['category_id']);
+        expect($first['id'])->not->toBe($second['id']);
+        expect($first['slug'])->not->toBe($second['slug']);
+        expect(PortfolioItem::where('client_id', $client->id)->count())->toBe(2);
     }
 
     public function test_different_clients_may_use_the_same_subcategory(): void
@@ -147,76 +142,45 @@ class PortfolioClientIntegrationTest extends TestCase
         $this->create($this->sel('opening-image', $client->id) + $this->titles())->assertStatus(201);
     }
 
-    public function test_moving_an_item_into_an_occupied_slot_is_rejected_and_its_own_slot_is_fine(): void
+    public function test_moving_an_item_and_updating_its_client_is_allowed(): void
     {
         $client = Client::factory()->create();
         $branding = $this->itemFor($client, 'branding', false);
         $graphic = $this->itemFor($client, 'graphic-design', false);
 
-        // keeping the same assignment is not a conflict
+        // keeping the same assignment
         $this->patch_($branding, $this->selection('branding') + ['title_en' => 'Renamed'])->assertStatus(200);
 
-        // the occupied slot
-        $this->patch_($branding, $this->selection('graphic-design'))
-            ->assertStatus(422)->assertJsonValidationErrors(['subcategory_id']);
-        expect($branding->fresh()->subcategory->slug)->toBe('branding');
+        // moving to another subcategory of the same kind works
+        $this->patch_($branding, $this->selection('graphic-design'))->assertStatus(200);
+        expect($branding->fresh()->subcategory->slug)->toBe('graphic-design');
 
-        // changing the client onto a client that already owns the slot
+        // changing client works
         $other = Client::factory()->create();
-        $this->itemFor($other, 'branding', false);
-        $this->patch_($branding, ['client_id' => $other->id])
-            ->assertStatus(422)->assertJsonValidationErrors(['subcategory_id']);
-
-        // moving to a free slot works (kind-compatible, so no media reset needed)
-        $this->patch_($graphic, ['client_id' => Client::factory()->create()->id])->assertStatus(200);
+        $this->patch_($branding, ['client_id' => $other->id])->assertStatus(200);
+        expect($branding->fresh()->client_id)->toBe($other->id);
     }
 
-    public function test_database_unique_index_blocks_duplicates_including_null_subcategory(): void
-    {
-        $client = Client::factory()->create();
-        $web = $this->cat('web-design');
-        $branding = $this->cat('branding');
-
-        PortfolioItem::factory()->create(['client_id' => $client->id, 'category_id' => $branding->parent_id, 'subcategory_id' => $branding->id]);
-        expect(fn () => PortfolioItem::factory()->create(['client_id' => $client->id, 'category_id' => $branding->parent_id, 'subcategory_id' => $branding->id]))
-            ->toThrow(UniqueConstraintViolationException::class);
-
-        // a nullable subcategory must not allow duplicates (plain composite UNIQUE would)
-        PortfolioItem::factory()->create(['client_id' => $client->id, 'category_id' => $web->id, 'subcategory_id' => null]);
-        expect(fn () => PortfolioItem::factory()->create(['client_id' => $client->id, 'category_id' => $web->id, 'subcategory_id' => null]))
-            ->toThrow(UniqueConstraintViolationException::class);
-
-        // other clients are unaffected
-        PortfolioItem::factory()->create(['client_id' => Client::factory(), 'category_id' => $web->id, 'subcategory_id' => null]);
-    }
-
-    public function test_a_concurrent_duplicate_that_passes_the_application_check_is_caught_by_the_database(): void
+    public function test_database_allows_multiple_items_with_same_client_and_subcategory(): void
     {
         $client = Client::factory()->create();
         $branding = $this->cat('branding');
-        $fields = ['client_id' => $client->id, 'category_id' => $branding->parent_id, 'subcategory_id' => $branding->id, 'title_en' => 'A'];
 
-        // the competing request committed after this one validated: the service goes straight to the insert
-        PortfolioItem::factory()->create($fields);
+        $item1 = PortfolioItem::factory()->create(['client_id' => $client->id, 'category_id' => $branding->parent_id, 'subcategory_id' => $branding->id, 'title_en' => 'A']);
+        $item2 = PortfolioItem::factory()->create(['client_id' => $client->id, 'category_id' => $branding->parent_id, 'subcategory_id' => $branding->id, 'title_en' => 'B']);
 
-        try {
-            app(PortfolioItemService::class)->save(null, ['fields' => $fields]);
-            $this->fail('Expected a validation exception.');
-        } catch (ValidationException $e) {
-            expect($e->errors())->toHaveKey('subcategory_id');
-        }
-
-        expect(PortfolioItem::where('client_id', $client->id)->count())->toBe(1);
+        expect($item1->id)->not->toBe($item2->id);
+        expect(PortfolioItem::where('client_id', $client->id)->count())->toBe(2);
     }
 
-    public function test_an_unpublished_item_still_reserves_its_slot(): void
+    public function test_an_unpublished_item_still_reserves_nothing_and_allows_more_items(): void
     {
         $client = Client::factory()->create();
         $item = $this->itemFor($client, 'branding', true);
 
         $this->postJson(self::ADMIN."/{$item->id}/unpublish")->assertStatus(200)->assertJsonPath('data.status', 'draft');
 
-        $this->create($this->sel('branding', $client->id) + $this->titles())->assertStatus(422);
+        $this->create($this->sel('branding', $client->id) + $this->titles())->assertStatus(201);
     }
 
     public function test_deleting_a_client_deletes_its_portfolio_items_media_covers_and_logo(): void
@@ -375,7 +339,7 @@ class PortfolioClientIntegrationTest extends TestCase
         $client = Client::factory()->create();
 
         // title + client + category + correct subcategory; no cover, no media
-        $this->create(['client_id' => $client->id, 'category_id' => $this->cat('pr')->id, 'subcategory_id' => $this->cat('media-covering')->id, 'title_ar' => 'مسودة'])
+        $this->create(['client_id' => $client->id, 'category_id' => $this->cat('pr')->id, 'subcategory_id' => $this->cat('media-covering')->id, 'title_en' => 'Draft', 'title_ar' => 'مسودة'])
             ->assertStatus(201)->assertJsonPath('data.status', 'draft')->assertJsonPath('data.subcategory.slug', 'media-covering')
             ->assertJsonPath('data.cover_image_url', null)->assertJsonPath('data.media_count', 0);
 
@@ -873,7 +837,9 @@ class PortfolioClientIntegrationTest extends TestCase
             ->assertJsonPath('data.client.id', $client->id)
             ->assertJsonPath('data.subcategory.slug', 'branding')
             ->assertJsonPath('data.kind', 'images')
-            ->assertJsonStructure(['data' => ['cover_image_url', 'media', 'link_1', 'link_2', 'link_3', 'client_category_items']]);
+            ->assertJsonStructure(['data' => ['cover_image_url', 'media', 'client_category_items']]);
+
+        expect($response->json('data'))->not->toHaveKeys(['link_1', 'link_2', 'link_3']);
 
         $siblings = collect($response->json('data.client_category_items'));
         expect($siblings->pluck('id')->all())->toBe([$graphic->id, $brand->id])

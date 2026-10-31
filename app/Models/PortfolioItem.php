@@ -30,6 +30,7 @@ class PortfolioItem extends Model
         'subcategory_id',
         'title_en',
         'title_ar',
+        'slug',
         'link_1',
         'link_2',
         'link_3',
@@ -84,5 +85,13 @@ class PortfolioItem extends Model
     public function isPublished(): bool
     {
         return $this->status === self::STATUS_PUBLISHED;
+    }
+
+    /**
+     * Determine whether the portfolio item has ever been published.
+     */
+    public function hasBeenPublished(): bool
+    {
+        return $this->published_at !== null;
     }
 }

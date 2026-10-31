@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\Client;
 use App\Models\PortfolioItem;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Str;
 
 /**
  * @extends Factory<PortfolioItem>
@@ -34,8 +35,23 @@ class PortfolioItemFactory extends Factory
             'subcategory_id' => $child?->id,
             'title_en' => fake()->sentence(3),
             'title_ar' => 'مشروع '.fake()->numerify('###'),
+            'slug' => null,
             'status' => PortfolioItem::STATUS_DRAFT,
         ];
+    }
+
+    public function configure(): static
+    {
+        return $this->afterCreating(function (PortfolioItem $item) {
+            if ($item->slug === null && ! empty($item->title_en)) {
+                $base = Str::slug($item->title_en, '-', 'en');
+                if ($base === '') {
+                    $base = 'portfolio';
+                }
+                $item->slug = "{$base}-{$item->id}";
+                $item->saveQuietly();
+            }
+        });
     }
 
     public function withCover(?string $key = null): static

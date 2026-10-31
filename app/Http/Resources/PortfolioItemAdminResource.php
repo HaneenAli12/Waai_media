@@ -17,7 +17,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 class PortfolioItemAdminResource extends JsonResource
 {
     /**
-     * Admin representation: both languages for editing plus the localized title for display.
+     * Admin representation: both languages for editing.
      * Storage keys are never exposed, only resolved public URLs.
      *
      * @return array<string, mixed>
@@ -27,13 +27,11 @@ class PortfolioItemAdminResource extends JsonResource
         $locale = LocaleNegotiator::negotiate($request->header('Accept-Language'));
         $images = app(PortfolioImageService::class);
 
-        $localizedTitle = $locale === 'ar'
-            ? ($this->title_ar ?: $this->title_en)
-            : ($this->title_en ?: $this->title_ar);
+        $kind = PortfolioKind::resolve($this->category, $this->subcategory);
 
         $data = [
             'id' => (int) $this->id,
-            'title' => $localizedTitle,
+            'slug' => $this->slug,
             'title_en' => $this->title_en,
             'title_ar' => $this->title_ar,
             'status' => (string) $this->status,
@@ -42,14 +40,17 @@ class PortfolioItemAdminResource extends JsonResource
             'cover_image_url' => $images->resolveUrl($this->cover_image_path),
             'category' => PortfolioCategoryPresenter::present($this->relationLoaded('category') ? $this->category : null, $locale),
             'subcategory' => PortfolioCategoryPresenter::present($this->relationLoaded('subcategory') ? $this->subcategory : null, $locale),
-            'kind' => PortfolioKind::resolve($this->category, $this->subcategory),
-            'link_1' => $this->link_1,
-            'link_2' => $this->link_2,
-            'link_3' => $this->link_3,
+            'kind' => $kind,
             'published_at' => $this->published_at?->toISOString(),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
         ];
+
+        if ($kind === PortfolioKind::WEB_DESIGN) {
+            $data['link_1'] = $this->link_1;
+            $data['link_2'] = $this->link_2;
+            $data['link_3'] = $this->link_3;
+        }
 
         if ($this->relationLoaded('media')) {
             $data['media_count'] = $this->media->count();

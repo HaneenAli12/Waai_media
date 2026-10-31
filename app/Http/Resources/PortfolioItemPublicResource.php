@@ -34,16 +34,30 @@ class PortfolioItemPublicResource extends JsonResource
             ? ($this->title_ar ?: $this->title_en)
             : ($this->title_en ?: $this->title_ar);
 
+        $kind = PortfolioKind::resolve($this->category, $this->subcategory);
+
         $data = [
             'id' => (int) $this->id,
+            'slug' => (string) $this->slug,
             'title' => $title,
             'cover_image_url' => $images->resolveUrl($this->cover_image_path),
             'client' => PortfolioClientPresenter::present($this->relationLoaded('client') ? $this->client : null),
             'category' => PortfolioCategoryPresenter::present($this->category, $locale),
             'subcategory' => PortfolioCategoryPresenter::present($this->subcategory, $locale),
-            'kind' => PortfolioKind::resolve($this->category, $this->subcategory),
+            'kind' => $kind,
             'published_at' => $this->published_at?->toISOString(),
         ];
+
+        // Project links are category-specific content for Web Design, exposed on details (not on card listings)
+        $isDetails = $request->routeIs('api.v1.portfolio.show')
+            || (bool) $request->route('id')
+            || $this->relationLoaded('siblings');
+
+        if ($isDetails && $kind === PortfolioKind::WEB_DESIGN) {
+            $data['link_1'] = $this->link_1;
+            $data['link_2'] = $this->link_2;
+            $data['link_3'] = $this->link_3;
+        }
 
         if ($this->relationLoaded('media')) {
             $data['media'] = $this->media->map(fn ($row) => [
@@ -51,15 +65,13 @@ class PortfolioItemPublicResource extends JsonResource
                 'image_url' => $images->resolveUrl($row->image_path),
                 'url' => $row->url,
             ])->values()->all();
-            $data['link_1'] = $this->link_1;
-            $data['link_2'] = $this->link_2;
-            $data['link_3'] = $this->link_3;
         }
 
         if ($this->relationLoaded('siblings')) {
             // Published items of the same client in the same main category (including this one), in tab order
             $data['client_category_items'] = $this->siblings->map(fn (PortfolioItem $sibling) => [
                 'id' => (int) $sibling->id,
+                'slug' => (string) $sibling->slug,
                 'title' => $locale === 'ar'
                     ? ($sibling->title_ar ?: $sibling->title_en)
                     : ($sibling->title_en ?: $sibling->title_ar),

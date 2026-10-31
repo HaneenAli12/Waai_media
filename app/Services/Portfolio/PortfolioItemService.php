@@ -38,7 +38,8 @@ class PortfolioItemService
     public const SLOT_TAKEN_MESSAGE = 'This client already has a portfolio item in the selected category/subcategory. Update the existing item instead of creating another.';
 
     public function __construct(
-        protected PortfolioImageService $images
+        protected PortfolioImageService $images,
+        protected PortfolioSlugService $slugService,
     ) {}
 
     /**
@@ -268,6 +269,21 @@ class PortfolioItemService
         }
 
         $model->save();
+
+        // Slug generation and immutability rules matching News Module
+        if ($isNew) {
+            $slug = $this->slugService->generateSlug($model->title_en, $model->id);
+            if ($slug !== null) {
+                $model->slug = $slug;
+                $model->save();
+            }
+        } else {
+            $titleEnProvided = array_key_exists('title_en', $fields);
+            if ($titleEnProvided) {
+                $model->slug = $this->slugService->resolveSlugForUpdate($model, $model->title_en, true);
+                $model->save();
+            }
+        }
 
         $this->applyMedia($model, $kind, $existing, $input, $entries, $featuredKey, $keysToDelete);
 

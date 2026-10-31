@@ -101,17 +101,28 @@ class PortfolioPublicApiTest extends TestCase
         $press = $this->makeItem('press-covering', [['image' => true, 'url' => 'https://example.com/a']], published: true);
         $video = $this->makeItem('opening-video', [['url' => 'https://youtu.be/9']], published: true);
 
+        // Details: Web design includes the 3 links
         $webData = $this->getJson(self::PUBLIC."/{$web->id}")->json('data');
         expect($webData['kind'])->toBe('web_design')->and($webData['subcategory'])->toBeNull();
+        expect($webData)->toHaveKeys(['link_1', 'link_2', 'link_3']);
         expect($webData['link_1'])->toBe('https://example.com/one')->and($webData['link_2'])->toBe('https://example.com/two')->and($webData['link_3'])->toBe('https://example.com/three');
         expect($webData['media'][0]['image_url'])->toStartWith('https://pub-r2.waai.test/portfolio/images/');
 
+        // Details: Images and Video do not include links
         $pressData = $this->getJson(self::PUBLIC."/{$press->id}")->json('data');
         expect($pressData['media'][0]['url'])->toBe('https://example.com/a')->and($pressData['media'][0]['image_url'])->not->toBeNull();
+        expect($pressData)->not->toHaveKeys(['link_1', 'link_2', 'link_3']);
 
         $videoData = $this->getJson(self::PUBLIC."/{$video->id}")->json('data');
         expect($videoData['media'][0]['url'])->toBe('https://youtu.be/9')->and($videoData['media'][0]['image_url'])->toBeNull();
         expect($videoData['category']['slug'])->toBe('opening')->and($videoData['subcategory']['slug'])->toBe('opening-video');
+        expect($videoData)->not->toHaveKeys(['link_1', 'link_2', 'link_3']);
+
+        // Listing: Neither Web design nor other items expose project links
+        $listing = $this->getJson(self::PUBLIC)->json('data');
+        foreach ($listing as $card) {
+            expect($card)->not->toHaveKeys(['link_1', 'link_2', 'link_3', 'media']);
+        }
 
         $raw = json_encode($this->getJson(self::PUBLIC)->json());
         foreach (['image_path', 'portfolio/images/../', '"status"', 'title_en', 'title_ar', 'updated_at'] as $leak) {

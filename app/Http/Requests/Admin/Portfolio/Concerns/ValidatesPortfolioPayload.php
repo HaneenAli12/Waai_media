@@ -5,6 +5,7 @@ namespace App\Http\Requests\Admin\Portfolio\Concerns;
 use App\Models\Category;
 use App\Models\PortfolioItem;
 use App\Services\Portfolio\PortfolioImageService;
+use App\Services\Portfolio\PortfolioSlugService;
 use App\Support\Portfolio\PortfolioKind;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\Rule;
@@ -137,33 +138,8 @@ trait ValidatesPortfolioPayload
             return;
         }
 
-        $this->validateSlotIsFree($v, $existing, (int) $clientId, $parent, $sub);
         $this->validateKindInputs($v, $kind, $existing);
         $this->validateTitles($v, $existing);
-    }
-
-    /**
-     * One client can hold at most one item (draft or published) per category slot: (client, subcategory) for
-     * categories with subcategories, (client, category) otherwise. The database unique index is the final guard.
-     */
-    private function validateSlotIsFree(Validator $v, ?PortfolioItem $existing, int $clientId, Category $parent, ?Category $sub): void
-    {
-        $taken = PortfolioItem::query()
-            ->where('client_id', $clientId)
-            ->where('category_id', $parent->id)
-            ->when($sub !== null, fn ($q) => $q->where('subcategory_id', $sub->id), fn ($q) => $q->whereNull('subcategory_id'))
-            ->when($existing !== null, fn ($q) => $q->where('id', '!=', $existing->id))
-            ->value('id');
-
-        if ($taken === null) {
-            return;
-        }
-
-        if ($sub !== null) {
-            $v->errors()->add('subcategory_id', sprintf('This client already has a portfolio item (id %d) in this subcategory. Update it instead of creating another.', $taken));
-        } else {
-            $v->errors()->add('category_id', sprintf('This client already has a portfolio item (id %d) in this category. Update it instead of creating another.', $taken));
-        }
     }
 
     private function validateKindInputs(Validator $v, string $kind, ?PortfolioItem $existing): void
@@ -235,11 +211,31 @@ trait ValidatesPortfolioPayload
 
     private function validateTitles(Validator $v, ?PortfolioItem $existing): void
     {
-        $en = $this->has('title_en') ? $this->input('title_en') : $existing?->title_en;
-        $ar = $this->has('title_ar') ? $this->input('title_ar') : $existing?->title_ar;
+        $titleEnProvided = $this->has('title_en');
+        $en = $titleEnProvided ? $this->input('title_en') : $existing?->title_en;
 
-        if (trim((string) $en) === '' && trim((string) $ar) === '') {
-            $v->errors()->add('title_en', 'At least one project title (English or Arabic) is required.');
+        if ($existing === null) {
+            // On creation: title_en is mandatory and must not be empty after trimming
+            if (! $titleEnProvided || trim((string) $en) === '') {
+                $v->errors()->add('title_en', 'The English project title is required.');
+
+                return;
+            }
+        } else {
+            // On update: if title_en was provided, it must not be empty after trimming
+            if ($titleEnProvided && trim((string) $en) === '') {
+                $v->errors()->add('title_en', 'The English project title cannot be empty.');
+
+                return;
+            }
+        }
+
+        // Validate slug generation compatibility for the English title
+        if ($en !== null && trim((string) $en) !== '') {
+            $slugService = app(PortfolioSlugService::class);
+            if ($slugService->normalizeTitle($en) === null) {
+                $v->errors()->add('title_en', 'The English title must contain valid Latin alphanumeric characters to generate a slug.');
+            }
         }
     }
 

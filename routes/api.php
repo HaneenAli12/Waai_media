@@ -6,10 +6,6 @@ use App\Http\Controllers\Api\Admin\ClientController as AdminClientController;
 use App\Http\Controllers\Api\Admin\EventController as AdminEventController;
 use App\Http\Controllers\Api\Admin\NewsController as AdminNewsController;
 use App\Http\Controllers\Api\Admin\PortfolioController as AdminPortfolioController;
-
-use App\Http\Controllers\Api\NewsController;
-use App\Http\Controllers\Api\PortfolioController;
-
 use App\Http\Controllers\Api\Admin\TeamMemberController as AdminTeamMemberController;
 use App\Http\Controllers\Api\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\AppLinkController;
@@ -21,7 +17,8 @@ use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\ContactInfoController;
 use App\Http\Controllers\Api\CounterController;
 use App\Http\Controllers\Api\EventController;
-
+use App\Http\Controllers\Api\NewsController;
+use App\Http\Controllers\Api\PortfolioController;
 use App\Http\Controllers\Api\TeamMemberController;
 use Illuminate\Support\Facades\Route;
 
@@ -177,7 +174,7 @@ Route::get('/portfolio', [PortfolioController::class, 'index']);
 // Client-based browsing (declared before the numeric {id} route; different path shapes, no overlap)
 Route::get('/portfolio/clients', [PortfolioController::class, 'clients']);
 Route::get('/portfolio/clients/{clientId}', [PortfolioController::class, 'clientNavigation'])->whereNumber('clientId');
-Route::get('/portfolio/{id}', [PortfolioController::class, 'show'])->whereNumber('id');
+Route::get('/portfolio/{identifier}', [PortfolioController::class, 'show']);
 // =========================================================================
 // App Links Module Endpoints
 // =========================================================================

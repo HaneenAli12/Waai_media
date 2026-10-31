@@ -52,21 +52,33 @@ class PortfolioController extends Controller
             $query->where('subcategory_id', (int) $request->input('subcategory_id'));
         }
 
-        $perPage = (int) $request->input('per_page', self::PER_PAGE);
+        $perPage = $request->filled('client_id')
+            ? 6
+            : (int) $request->input('per_page', self::PER_PAGE);
 
         return PortfolioItemPublicResource::collection($query->paginate($perPage))->response();
     }
 
     /**
      * A single published item with its content and the client's other published items in the same main category
-     * (for the subcategory tabs); drafts and unknown ids return 404.
+     * (for the subcategory tabs); drafts and unknown identifiers return 404.
      */
-    public function show(int $id): JsonResponse
+    public function show(string|int $identifier): JsonResponse
     {
-        $item = PortfolioItem::query()
+        $query = PortfolioItem::query()
             ->published()
-            ->with(['client', 'category', 'subcategory', 'media'])
-            ->findOrFail($id);
+            ->with(['client', 'category', 'subcategory', 'media']);
+
+        if (is_numeric($identifier)) {
+            $query->where(function ($q) use ($identifier) {
+                $q->where('id', (int) $identifier)
+                    ->orWhere('slug', (string) $identifier);
+            });
+        } else {
+            $query->where('slug', (string) $identifier);
+        }
+
+        $item = $query->firstOrFail();
 
         $siblings = $item->client_id === null
             ? collect([$item])
@@ -136,6 +148,7 @@ class PortfolioController extends Controller
 
         $tabs = $this->orderByCategoryPosition($items)->map(fn (PortfolioItem $item) => [
             'portfolio_id' => (int) $item->id,
+            'slug' => (string) $item->slug,
             'title' => $locale === 'ar' ? ($item->title_ar ?: $item->title_en) : ($item->title_en ?: $item->title_ar),
             'cover_image_url' => $images->resolveUrl($item->cover_image_path),
             'subcategory' => PortfolioCategoryPresenter::present($item->subcategory, $locale),

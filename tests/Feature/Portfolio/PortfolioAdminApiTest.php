@@ -437,6 +437,31 @@ class PortfolioAdminApiTest extends TestCase
             ->assertStatus(422)->assertJsonValidationErrors(['link_3']);
     }
 
+    public function test_non_web_design_items_do_not_expose_links_in_admin_response(): void
+    {
+        $this->as($this->editor);
+
+        // Images kind
+        $imageItem = $this->create($this->sel('graphic-design') + $this->titles() + ['media' => [['image' => $this->png()]]])
+            ->assertStatus(201);
+        expect($imageItem->json('data'))->not->toHaveKeys(['link_1', 'link_2', 'link_3']);
+
+        // Video kind
+        $videoItem = $this->create($this->sel('videos') + $this->titles() + ['media' => [['url' => 'https://example.com/v']]])
+            ->assertStatus(201);
+        expect($videoItem->json('data'))->not->toHaveKeys(['link_1', 'link_2', 'link_3']);
+
+        // Web design kind has them
+        $webItem = $this->create($this->sel('web-design') + $this->titles() + [
+            'status' => 'published',
+            'featured_image' => $this->png(),
+            'link_1' => 'https://example.com/1',
+            'link_2' => 'https://example.com/2',
+        ])->assertStatus(201);
+        expect($webItem->json('data'))->toHaveKeys(['link_1', 'link_2', 'link_3']);
+        expect($webItem->json('data.link_3'))->toBeNull(); // link_3 remains optional
+    }
+
     public function test_web_design_featured_image_replacement_removes_the_old_object_after_commit(): void
     {
         $this->as($this->editor);
@@ -1018,8 +1043,9 @@ class PortfolioAdminApiTest extends TestCase
 
         $row = $this->getJson(self::ADMIN, ['Accept-Language' => 'ar'])->assertStatus(200)->json('data.0');
 
-        expect($row)->toHaveKeys(['id', 'title', 'title_en', 'title_ar', 'status', 'category', 'subcategory', 'kind', 'cover_image_url', 'media_count', 'created_at']);
-        expect($row['title'])->toBe('ع')->and($row['media_count'])->toBe(1);
+        expect($row)->toHaveKeys(['id', 'title_en', 'title_ar', 'status', 'category', 'subcategory', 'kind', 'cover_image_url', 'media_count', 'created_at']);
+        expect($row)->not->toHaveKey('title');
+        expect($row['title_ar'])->toBe('ع')->and($row['media_count'])->toBe(1);
         expect($row['category']['name'])->toBe($this->cat('pr')->name_ar);
         expect(json_encode($row))->not->toContain('image_path');
     }
