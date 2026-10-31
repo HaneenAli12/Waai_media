@@ -1,20 +1,27 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\BackgroundMusicController as AdminBackgroundMusicController;
+use App\Http\Controllers\Api\Admin\BlogController as AdminBlogController;
 use App\Http\Controllers\Api\Admin\ClientController as AdminClientController;
 use App\Http\Controllers\Api\Admin\EventController as AdminEventController;
+use App\Http\Controllers\Api\Admin\NewsController as AdminNewsController;
 use App\Http\Controllers\Api\Admin\PortfolioController as AdminPortfolioController;
+
+use App\Http\Controllers\Api\NewsController;
+use App\Http\Controllers\Api\PortfolioController;
+
 use App\Http\Controllers\Api\Admin\TeamMemberController as AdminTeamMemberController;
 use App\Http\Controllers\Api\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\AppLinkController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\BackgroundMusicController;
+use App\Http\Controllers\Api\BlogController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ClientController;
 use App\Http\Controllers\Api\ContactInfoController;
 use App\Http\Controllers\Api\CounterController;
 use App\Http\Controllers\Api\EventController;
-use App\Http\Controllers\Api\PortfolioController;
+
 use App\Http\Controllers\Api\TeamMemberController;
 use Illuminate\Support\Facades\Route;
 
@@ -99,6 +106,29 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'require.access', 'role:supe
     // Background Music Module Admin Endpoints
     Route::get('/background-music', [AdminBackgroundMusicController::class, 'show']);
     Route::match(['put', 'patch', 'post'], '/background-music', [AdminBackgroundMusicController::class, 'update']);
+
+    // News Module Admin Endpoints
+    Route::post('/news/images', [AdminNewsController::class, 'uploadImage']);
+    Route::get('/news', [AdminNewsController::class, 'index']);
+    Route::post('/news', [AdminNewsController::class, 'store']);
+    Route::get('/news/{news}', [AdminNewsController::class, 'show']);
+    // POST is accepted for multipart updates (send _method=PATCH): PHP does not parse multipart bodies on real PATCH/PUT
+    Route::match(['put', 'patch', 'post'], '/news/{news}', [AdminNewsController::class, 'update']);
+    Route::match(['post', 'patch'], '/news/{news}/publish', [AdminNewsController::class, 'publish']);
+    Route::match(['post', 'patch'], '/news/{news}/unpublish', [AdminNewsController::class, 'unpublish']);
+    Route::delete('/news/{news}', [AdminNewsController::class, 'destroy'])
+        ->middleware('role:super_admin,admin');
+
+    // Blogs Module Admin Endpoints
+    Route::post('/blogs/images', [AdminBlogController::class, 'uploadImage']);
+    Route::get('/blogs', [AdminBlogController::class, 'index']);
+    Route::post('/blogs', [AdminBlogController::class, 'store']);
+    Route::get('/blogs/{blog}', [AdminBlogController::class, 'show']);
+    Route::match(['put', 'patch', 'post'], '/blogs/{blog}', [AdminBlogController::class, 'update']);
+    Route::match(['post', 'patch'], '/blogs/{blog}/publish', [AdminBlogController::class, 'publish']);
+    Route::match(['post', 'patch'], '/blogs/{blog}/unpublish', [AdminBlogController::class, 'unpublish']);
+    Route::delete('/blogs/{blog}', [AdminBlogController::class, 'destroy'])
+        ->middleware('role:super_admin,admin');
 });
 
 // =========================================================================
@@ -159,3 +189,17 @@ Route::put('/app-links', [AppLinkController::class, 'update'])
 // Categories Module Endpoints (Public Shared Read-Only)
 // =========================================================================
 Route::get('/categories', [CategoryController::class, 'index']);
+
+// =========================================================================
+// News Module Public Endpoints
+// =========================================================================
+Route::get('/news/latest', [NewsController::class, 'latest']);
+Route::get('/news', [NewsController::class, 'index']);
+Route::get('/news/{identifier}', [NewsController::class, 'show']);
+
+// =========================================================================
+// Blogs Module Public Endpoints
+// =========================================================================
+Route::get('/blogs/latest', [BlogController::class, 'latest']);
+Route::get('/blogs', [BlogController::class, 'index']);
+Route::get('/blogs/{identifier}', [BlogController::class, 'show']);

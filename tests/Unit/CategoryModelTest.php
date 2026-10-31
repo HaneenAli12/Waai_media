@@ -44,7 +44,8 @@ class CategoryModelTest extends TestCase
         }
 
         $blogs = Category::forType('blogs')->get();
-        $this->assertCount(5, $blogs);
+        // 6 categories including Tools & Tech
+        $this->assertCount(6, $blogs);
 
         $portfolio = Category::forType('portfolio')->get();
         $this->assertCount(6, $portfolio);
@@ -237,7 +238,7 @@ class CategoryModelTest extends TestCase
         // Exact category counts
         $this->assertSame(6, Category::where('type', 'portfolio')->whereNull('parent_id')->count());
         $this->assertSame(9, Category::where('type', 'portfolio')->whereNotNull('parent_id')->count());
-        $this->assertSame(5, Category::where('type', 'blogs')->whereNull('parent_id')->count());
+        $this->assertSame(6, Category::where('type', 'blogs')->whereNull('parent_id')->count());
         $this->assertSame(0, Category::where('type', 'blogs')->whereNotNull('parent_id')->count());
     }
 }

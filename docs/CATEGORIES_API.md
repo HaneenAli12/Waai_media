@@ -4,10 +4,10 @@ This document describes the API contract, database design, and architecture for 
 
 The Categories module provides a centralized, multilingual, read-only category taxonomy for three content modules:
 1. **News** (Hierarchical: 9 top-level categories, including Entertainment with 4 subcategories)
-2. **Blogs** (Flat: 5 categories)
+2. **Blogs** (Flat: 6 categories)
 3. **Portfolio** (Flat: 6 categories)
 
-Total: **Exactly 24 category records**.
+Total: **Exactly 25 category records** (including Tools & Tech for Blogs added via migration).
 
 ---
 
@@ -43,7 +43,7 @@ Total: **Exactly 24 category records**.
 
 ---
 
-## 2. Complete Static Taxonomy (24 Categories)
+## 2. Complete Static Taxonomy (25 Categories)
 
 ### 2.1 News Categories (9 Top-Level + 4 Children = 13 records)
 
@@ -63,7 +63,7 @@ Total: **Exactly 24 category records**.
 | 12 | `news` | 3 | `tv-shows` | TV Shows | البرامج والمسلسلات التلفزيونية | `entertainment` | Child Subcategory |
 | 13 | `news` | 4 | `book-reviews` | Book Reviews | مراجعات الكتب | `entertainment` | Child Subcategory |
 
-### 2.2 Blogs Categories (5 Records — Flat)
+### 2.2 Blogs Categories (6 Records — Flat)
 
 | ID (Sample) | Type | Sort Order | Slug | English Name | Arabic Name | Parent Slug | Note |
 | :---: | :---: | :---: | :--- | :--- | :--- | :--- | :--- |
@@ -72,6 +72,7 @@ Total: **Exactly 24 category records**.
 | 16 | `blogs` | 3 | `tips-guides` | Tips & Guides | نصائح وأدلة إرشادية | *None* | Flat category |
 | 17 | `blogs` | 4 | `creative-ideas` | Creative Ideas | أفكار إبداعية | *None* | Flat category |
 | 18 | `blogs` | 5 | `behind-the-scenes` | Behind the Scenes | خلف الكواليس | *None* | Flat category |
+| 25 | `blogs` | 6 | `tools-tech` | Tools & Tech | الأدوات والتقنية | *None* | Added via Blog migration |
 
 ### 2.3 Portfolio Categories (6 Records — Flat)
 
