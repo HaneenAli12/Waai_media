@@ -44,3 +44,22 @@ Schedule::command('clients:clean-orphaned-logos --force --grace-hours=24 --max-d
     ->weeklyOn(1, '04:30') // Every Monday at 04:30 AM (after the team photos cleanup)
     ->withoutOverlapping(120)
     ->runInBackground();
+
+// Weekly orphaned portfolio image cleanup
+Schedule::command('portfolio:clean-orphaned-images --force --grace-hours=24 --max-deletions=50')
+    ->weeklyOn(1, '05:00')
+    ->withoutOverlapping(120)
+    ->runInBackground();
+
+// Weekly orphaned news image cleanup
+Schedule::command('news:clean-orphaned-images --force --grace-hours=24 --max-deletions=50')
+    ->weeklyOn(1, '05:15')
+    ->withoutOverlapping(120)
+    ->runInBackground();
+
+// Weekly orphaned blog image cleanup
+Schedule::command('blogs:clean-orphaned-images --grace-hours=24 --max-deletions=50')
+    ->weeklyOn(1, '05:30')
+    ->withoutOverlapping(120)
+    ->onOneServer()
+    ->runInBackground();

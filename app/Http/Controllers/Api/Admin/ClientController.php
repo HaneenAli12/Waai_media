@@ -9,6 +9,7 @@ use App\Http\Requests\Admin\Clients\UpdateClientRequest;
 use App\Http\Resources\ClientAdminResource;
 use App\Models\Client;
 use App\Services\Clients\ClientLogoService;
+use App\Services\Portfolio\PortfolioItemService;
 use App\Services\Storage\Exceptions\InvalidImageException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
@@ -24,7 +25,8 @@ class ClientController extends Controller
     public const PER_PAGE = 10;
 
     public function __construct(
-        protected ClientLogoService $logoService
+        protected ClientLogoService $logoService,
+        protected PortfolioItemService $portfolio
     ) {}
 
     /**
@@ -119,7 +121,7 @@ class ClientController extends Controller
     }
 
     /**
-     * Permanently delete a client and its logo.
+     * Permanently delete a client, its portfolio items (same transaction) and its logo.
      *
      * Accessible by Administrator ONLY (route middleware + controller-level check).
      * The R2 object is removed after the database delete commits; storage failures are logged
@@ -137,12 +139,17 @@ class ClientController extends Controller
 
         $logoKey = $client->logo_path;
         $clientId = $client->id;
+        $portfolioKeys = [];
 
-        DB::transaction(function () use ($client, &$logoKey) {
+        // The client and all of its portfolio items (and their media rows) are removed in ONE transaction: either
+        // everything is deleted or nothing is. R2 objects are only touched after the commit.
+        DB::transaction(function () use ($client, &$logoKey, &$portfolioKeys) {
             $logoKey = DB::table('clients')->where('id', $client->id)->lockForUpdate()->value('logo_path') ?? $logoKey;
+            $portfolioKeys = $this->portfolio->deleteAllForClient($client->id);
             $client->delete();
         });
 
+        $this->portfolio->cleanupKeys($portfolioKeys);
         $this->logoService->deleteIfUnshared($logoKey, $clientId);
 
         return response()->json([

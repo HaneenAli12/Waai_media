@@ -45,9 +45,12 @@ class ImageStorageService
     public const ALLOWED_PREFIXES = [
         'news/covers/',
         'news/editor/',
+        'blogs/covers/',
+        'blogs/editor/',
         'clients/logos/',
         'team/photos/',
         'events/covers/',
+        'portfolio/images/',
     ];
 
     /**

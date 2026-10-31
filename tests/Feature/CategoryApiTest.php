@@ -162,8 +162,8 @@ class CategoryApiTest extends TestCase
 
         $data = $response->json('data');
 
-        // Exactly 5 categories
-        $this->assertCount(5, $data);
+        // Exactly 6 categories including Tools & Tech
+        $this->assertCount(6, $data);
 
         $expectedBlogs = [
             1 => ['slug' => 'digital-marketing-trends', 'name' => 'Digital Marketing Trends'],
@@ -171,6 +171,7 @@ class CategoryApiTest extends TestCase
             3 => ['slug' => 'tips-guides', 'name' => 'Tips & Guides'],
             4 => ['slug' => 'creative-ideas', 'name' => 'Creative Ideas'],
             5 => ['slug' => 'behind-the-scenes', 'name' => 'Behind The Scenes'],
+            6 => ['slug' => 'tools-tech', 'name' => 'Tools & Tech'],
         ];
 
         foreach ($expectedBlogs as $index => $expected) {
@@ -183,8 +184,8 @@ class CategoryApiTest extends TestCase
         }
 
         // Database checks for Blogs integrity
-        $this->assertSame(5, Category::where('type', 'blogs')->count());
-        $this->assertSame(5, Category::where('type', 'blogs')->whereNull('parent_id')->count());
+        $this->assertSame(6, Category::where('type', 'blogs')->count());
+        $this->assertSame(6, Category::where('type', 'blogs')->whereNull('parent_id')->count());
         $this->assertSame(0, Category::where('type', 'blogs')->whereNotNull('parent_id')->count());
     }
 
@@ -399,10 +400,10 @@ class CategoryApiTest extends TestCase
 
     public function test_seeder_is_idempotent_preserves_stable_ids_and_never_duplicates(): void
     {
-        // Initial state seeded in setUp (33 total: 13 News + 5 Blogs + 15 Portfolio)
-        $this->assertSame(33, Category::count());
+        // Initial state seeded in setUp (34 total: 13 News + 6 Blogs + 15 Portfolio)
+        $this->assertSame(34, Category::count());
         $this->assertSame(13, Category::where('type', 'news')->count());
-        $this->assertSame(5, Category::where('type', 'blogs')->count());
+        $this->assertSame(6, Category::where('type', 'blogs')->count());
         $this->assertSame(15, Category::where('type', 'portfolio')->count());
 
         $initialRows = Category::orderBy('id')->get(['id', 'type', 'name_en', 'name_ar', 'slug', 'parent_id', 'sort_order'])->toArray();
@@ -411,13 +412,13 @@ class CategoryApiTest extends TestCase
         $seeder = new CategorySeeder;
         $seeder->run();
 
-        // Count must remain exactly 33
-        $this->assertSame(33, Category::count());
+        // Count must remain exactly 34
+        $this->assertSame(34, Category::count());
         $this->assertSame($initialRows, Category::orderBy('id')->get(['id', 'type', 'name_en', 'name_ar', 'slug', 'parent_id', 'sort_order'])->toArray());
 
         // Run seeder third time
         $seeder->run();
-        $this->assertSame(33, Category::count());
+        $this->assertSame(34, Category::count());
         $this->assertSame($initialRows, Category::orderBy('id')->get(['id', 'type', 'name_en', 'name_ar', 'slug', 'parent_id', 'sort_order'])->toArray());
     }
 
