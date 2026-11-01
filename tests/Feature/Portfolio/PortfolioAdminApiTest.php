@@ -628,6 +628,185 @@ class PortfolioAdminApiTest extends TestCase
         expect($item->fresh()->media)->toHaveCount(1);
     }
 
+    public function test_changing_both_category_and_subcategory_to_different_parent_with_same_kind_keeps_media(): void
+    {
+        $this->as($this->editor);
+        // Start in Opening / Opening Images (images kind)
+        $item = $this->makeItem('opening-image', [['image' => true], ['image' => true]]);
+        $keys = $item->media->pluck('image_path')->all();
+        expect($keys)->toHaveCount(2);
+
+        // Move to Social Media Campaign / Branding (also images kind) without confirm_media_reset
+        $parent = $this->cat('social-media-campaign');
+        $child = $this->cat('branding');
+
+        $payload = [
+            'category_id' => $parent->id,
+            'subcategory_id' => $child->id,
+        ];
+        expect(array_key_exists('confirm_media_reset', $payload))->toBeFalse();
+
+        $this->update($item, $payload)->assertStatus(200)
+            ->assertJsonPath('data.category.slug', 'social-media-campaign')
+            ->assertJsonPath('data.subcategory.slug', 'branding')
+            ->assertJsonPath('data.kind', 'images');
+
+        $fresh = $item->fresh();
+        expect($fresh->category_id)->toBe($parent->id);
+        expect($fresh->subcategory_id)->toBe($child->id);
+        expect($fresh->media)->toHaveCount(2);
+
+        // Old media records and R2 objects must be kept intact without reset
+        foreach ($keys as $key) {
+            Storage::disk('r2')->assertExists($key);
+        }
+    }
+
+    public function test_changing_category_only_without_subcategory_fails_validation_if_subcategory_does_not_belong(): void
+    {
+        $this->as($this->editor);
+        // Item in Opening / Opening Images
+        $item = $this->makeItem('opening-image', [['image' => true]], [
+            'title_en' => 'Unchanged EN',
+            'title_ar' => 'عنوان ثابت',
+        ]);
+        $originalCategoryId = $item->category_id;
+        $originalSubcategoryId = $item->subcategory_id;
+        $mediaKey = $item->media->first()->image_path;
+
+        // Try to update category_id to PR without specifying subcategory_id
+        // The existing subcategory (opening-image) does NOT belong to PR
+        $this->update($item, [
+            'category_id' => $this->cat('pr')->id,
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors([
+                'subcategory_id' => 'The selected subcategory does not belong to the selected category.',
+            ]);
+
+        // Assert record and media remain untouched in every field
+        $fresh = $item->fresh();
+        expect($fresh->category_id)->toBe($originalCategoryId);
+        expect($fresh->subcategory_id)->toBe($originalSubcategoryId);
+        expect($fresh->title_en)->toBe('Unchanged EN');
+        expect($fresh->title_ar)->toBe('عنوان ثابت');
+        expect($fresh->media)->toHaveCount(1);
+        Storage::disk('r2')->assertExists($mediaKey);
+    }
+
+    public function test_changing_to_different_media_type_with_explicit_confirm_media_reset_false_is_rejected(): void
+    {
+        $this->as($this->editor);
+        $item = $this->makeItem('graphic-design', [['image' => true]]);
+        $originalCategoryId = $item->category_id;
+        $originalSubcategoryId = $item->subcategory_id;
+        $key = $item->media->first()->image_path;
+
+        // Changing from images (graphic-design) to video_urls (videos) with confirm_media_reset=false
+        $this->update($item, $this->sel('videos') + ['confirm_media_reset' => false])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['confirm_media_reset']);
+
+        // Data, category_id, subcategory_id, and R2 objects must not be touched
+        $fresh = $item->fresh();
+        expect($fresh->category_id)->toBe($originalCategoryId);
+        expect($fresh->subcategory_id)->toBe($originalSubcategoryId);
+        expect($fresh->subcategory_id)->toBe($this->cat('graphic-design')->id);
+        expect($fresh->media)->toHaveCount(1);
+        Storage::disk('r2')->assertExists($key);
+    }
+
+    public function test_changing_media_type_with_confirm_media_reset_rolls_back_if_publishing_requirements_fail(): void
+    {
+        $this->as($this->editor);
+        // A published item in Graphic Design (images kind)
+        $item = $this->makeItem('graphic-design', [['image' => true]], [
+            'title_en' => 'Published Project',
+            'title_ar' => 'مشروع منشور',
+            'link_1' => null,
+            'link_2' => null,
+            'link_3' => null,
+        ], published: true);
+
+        $originalCategoryId = $item->category_id;
+        $originalSubcategoryId = $item->subcategory_id;
+        $originalKeys = $item->media->pluck('image_path')->all();
+        expect($originalKeys)->toHaveCount(1);
+        expect($item->status)->toBe('published');
+
+        // Attempt to change to videos (requires video URLs to remain published), with confirm_media_reset=true
+        // but without providing any valid video URLs.
+        $this->update($item, $this->sel('videos') + [
+            'confirm_media_reset' => true,
+            // no valid video media provided
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['media']);
+
+        // Due to the transaction rollback, category, subcategory, status, links, media rows and R2 files MUST remain intact
+        $fresh = $item->fresh();
+        expect($fresh->status)->toBe('published');
+        expect($fresh->category_id)->toBe($originalCategoryId);
+        expect($fresh->subcategory_id)->toBe($originalSubcategoryId);
+        expect($fresh->link_1)->toBeNull();
+        expect($fresh->link_2)->toBeNull();
+        expect($fresh->link_3)->toBeNull();
+        expect($fresh->media)->toHaveCount(1);
+
+        foreach ($originalKeys as $key) {
+            Storage::disk('r2')->assertExists($key);
+        }
+    }
+
+    public function test_web_design_links_are_preserved_when_media_type_change_rolls_back(): void
+    {
+        $this->as($this->editor);
+        // 1. Create a published Web Design item with 3 valid distinct links and a featured work image
+        $item = $this->makeItem('web-design', [['image' => true]], [
+            'title_en' => 'Web Design Project',
+            'title_ar' => 'مشروع تصميم موقع',
+            'link_1' => 'https://example.com/site',
+            'link_2' => 'https://behance.net/sample-case',
+            'link_3' => 'https://figma.com/file/preview',
+        ], published: true);
+
+        $originalCategoryId = $item->category_id;
+        $originalSubcategoryId = $item->subcategory_id; // null for web-design
+        $originalStatus = $item->status;
+        $originalMediaKey = $item->media->first()?->image_path;
+        $originalCoverKey = $item->cover_image_path;
+
+        expect($originalCategoryId)->toBe($this->cat('web-design')->id);
+        expect($originalSubcategoryId)->toBeNull();
+        expect($originalStatus)->toBe('published');
+        expect($item->link_1)->toBe('https://example.com/site');
+        expect($item->link_2)->toBe('https://behance.net/sample-case');
+        expect($item->link_3)->toBe('https://figma.com/file/preview');
+        expect($originalMediaKey)->not->toBeNull();
+        expect($originalCoverKey)->not->toBeNull();
+
+        // 2. Attempt to change from Web Design to Videos with confirm_media_reset=true,
+        // but intentionally omit any valid video URL entries so that publishing verification fails.
+        $this->update($item, $this->sel('videos') + [
+            'confirm_media_reset' => true,
+            // no valid video media sent, which triggers publishErrors('media')
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['media']);
+
+        // 3. Assert full database transaction rollback:
+        $fresh = $item->fresh();
+        expect($fresh->status)->toBe('published');
+        expect($fresh->category_id)->toBe($originalCategoryId);
+        expect($fresh->subcategory_id)->toBeNull();
+        expect($fresh->link_1)->toBe('https://example.com/site');
+        expect($fresh->link_2)->toBe('https://behance.net/sample-case');
+        expect($fresh->link_3)->toBe('https://figma.com/file/preview');
+
+        // Original media record and R2 objects must be untouched
+        expect($fresh->media)->toHaveCount(1);
+        expect($fresh->media->first()->image_path)->toBe($originalMediaKey);
+        Storage::disk('r2')->assertExists($originalMediaKey);
+        Storage::disk('r2')->assertExists($originalCoverKey);
+    }
+
     public function test_changing_to_a_different_kind_requires_explicit_confirmation(): void
     {
         $this->as($this->editor);

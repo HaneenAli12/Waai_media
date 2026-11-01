@@ -189,11 +189,40 @@ Admin responses provide both language fields (`title_en` and `title_ar`) without
   * Republishing after an unpublish records a new timestamp (the previous one was cleared).
   * Public APIs show an item only if it is `published` **and** has a recorded `published_at` that is not in the future (same rule as Events). There is no scheduled or automatic publishing and no input accepts a publication time.
 
-## 6. Category / subcategory changes
+## 6. Category / subcategory changes and Media Reset
 
-* Same kind (e.g. Graphic Design → Branding): media and links are kept.
-* Different kind with stored media or Web Design links: **422 on `confirm_media_reset`**; nothing is changed or deleted. Resend with `confirm_media_reset=true` to remove the old media/links (R2 objects are deleted after the commit when unshared) and apply the new category. Moving to Web Design also requires `subcategory_id=null`.
-* No stored media/links: the change needs no confirmation.
+When updating a portfolio item's category or subcategory (`PATCH /admin/portfolio/{id}`), the backend enforces strict validation, relationship integrity, and content kind compatibility:
+
+### 6.1 Category and Subcategory Relationship Integrity
+* **Strict Hierarchy**: When updating `category_id`, any provided `subcategory_id` must belong to that main category.
+* **Omitted Subcategory on Update**: If a request sends a new `category_id` but omits `subcategory_id`, the system retains the existing `subcategory_id`. If that existing subcategory does not belong to the new category, the request fails with **HTTP 422** (`subcategory_id: The selected subcategory does not belong to the selected category.`). No auto-selection or guessing occurs.
+* **Web Design**: Categories without subcategories (e.g. `web-design`) require `subcategory_id = null`. Supplying a subcategory returns **HTTP 422** (`subcategory_id: The selected category does not have subcategories.`).
+
+### 6.2 Same Media Type (No Reset Required - HTTP 200)
+* When changing to a subcategory that shares the **same content kind**:
+  * Within the same main category (e.g., `graphic-design` → `branding` in `social-media-campaign`, both `images`).
+  * Across different main categories (e.g., `opening-image` in `opening` → `branding` in `social-media-campaign`, both `images`).
+* **Result**: Returns **HTTP 200 OK**. `confirm_media_reset` is **not required**. All existing media rows in `portfolio_media` and image files in Cloudflare R2 are preserved completely intact.
+
+### 6.3 Different Media Type (Confirmation Required)
+* When changing to a category/subcategory of a **different content kind** (e.g., `images` → `video_urls`, or `images` → `web_design`):
+  * **Without confirmation or `confirm_media_reset=false`**: Returns **HTTP 422 Unprocessable Entity**:
+    ```json
+    {
+      "message": "Changing to this category would remove X existing media entries and any stored project links. Resend the request with confirm_media_reset=true to confirm.",
+      "errors": {
+        "confirm_media_reset": [
+          "Changing to this category would remove X existing media entries and any stored project links. Resend the request with confirm_media_reset=true to confirm."
+        ]
+      }
+    }
+    ```
+    No data is modified and no media or R2 objects are deleted.
+  * **With `confirm_media_reset=true`**: Returns **HTTP 200 OK** (provided the update satisfies the target kind's rules). The previous incompatible media records and project links (`link_1`, `link_2`, `link_3`) are cleared, and unshared R2 files are deleted after the database transaction commits.
+  * **Rollback Safety on Publishing Validation Failure**: If a published item changes its media kind with `confirm_media_reset=true` but fails the new kind's publishing requirements (e.g. switching to `video_urls` without supplying any video URL), the database transaction is rolled back in full. All previous categories, statuses, media rows, Web Design links (`link_1`, `link_2`, `link_3`), and R2 objects remain completely preserved. No R2 files are deleted.
+
+### 6.4 Items Without Stored Media or Links
+* If an item has no stored media entries and no stored project links, changing between different content kinds does not require confirmation and succeeds immediately with **HTTP 200 OK**.
 
 ## 7. Search, filters, pagination
 
